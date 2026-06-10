@@ -1,0 +1,46 @@
+{
+  "projectName": "PictureGPS-to-MapOnline",
+  "projectType": "web-app",
+  "outputLanguage": "thai",
+  "promptPackLevel": "advanced",
+  "documentsToGenerate": [
+    "prd.md",
+    "design.md",
+    "architecture.md",
+    "rules.md",
+    "tasks.md",
+    "memory.md"
+  ],
+  "coreFeatures": [
+    "1. upload รูปภาพได้หลายๆรูป",
+    "2. หาพิกัด GPS จากรูปภาพ",
+    "3. แสดงบน MAP",
+    "4. ทำ label บนแผนที่",
+    "5. สร้างเส้น Routing จาก label บน Map",
+    "6. บันทึกเป็นรูปได้",
+    "7. อ่าน Meta Data ของรูปได้",
+    "8. รองรับรูปภาพหลาย Format"
+  ],
+  "aiTargetContext": {
+    "targetProfile": {
+      "id": "generic-agent",
+      "label": "Generic Agent",
+      "workflowStyle": "Tool-agnostic, markdown-first, easy to adapt",
+      "handoffStyle": "สื่อสารชัดเป็นขั้นตอน ใช้ภาษาเรียบและลด assumption ที่ผูกกับ IDE ใด IDE หนึ่ง",
+      "promptBias": "เน้น context completeness, next-task execution และ memory updates แบบทั่วไป"
+    },
+    "provider": {
+      "id": "deterministic-fallback",
+      "label": "Standard Fallback",
+      "model": null,
+      "timeoutMs": null
+    }
+  },
+  "aiDocuments": [],
+  "aiQualityGate": null,
+  "aiAnalysis": null,
+  "providerDiagnosticsHistory": null,
+  "contextSync": null,
+  "teamTemplate": null,
+  "generatedAt": "2026-06-09T07:48:49.310Z"
+}

@@ -463,6 +463,8 @@ function buildPopupHTML(photo) {
   const cam =
     [photo.exif?.Make, photo.exif?.Model].filter(Boolean).join(" ") || null;
 
+  const gmapsUrl = `https://www.google.com/maps?q=${photo.gps?.latitude},${photo.gps?.longitude}`;
+
   return `
     <div class="popup-content">
       <div class="popup-thumb-wrap">
@@ -476,6 +478,10 @@ function buildPopupHTML(photo) {
         <div class="popup-row"><span>📍</span><span>${lat}, ${lng}</span></div>
         ${alt ? `<div class="popup-row"><span>⛰️</span><span>${alt}</span></div>` : ""}
         ${cam ? `<div class="popup-row"><span>📷</span><span>${escHtml(cam)}</span></div>` : ""}
+        <a href="${gmapsUrl}" target="_blank" rel="noopener" class="popup-gmaps-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+          นำทางใน Google Maps
+        </a>
       </div>
     </div>`;
 }
@@ -612,38 +618,94 @@ function clearAll() {
   DOM.fileInput.value = "";
 }
 
-async function saveMapAsImage() {
-  if (!State.map) return;
-
-  showLoading("กำลังบันทึกแผนที่เป็นรูปภาพ...");
-
-  try {
-    if (typeof html2canvas === "undefined") {
-      throw new Error("html2canvas ยังไม่ได้โหลด");
-    }
-
-    const mapEl = document.getElementById("map");
-    const canvas = await html2canvas(mapEl, {
-      useCORS: true,
-      allowTaint: true,
-      scale: Math.min(window.devicePixelRatio || 1, 2),
-      backgroundColor: "#141414",
-      logging: false,
-    });
-
-    const link = document.createElement("a");
-    link.download = `picturegps-map-${fmtFilenameDate(new Date())}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  } catch (err) {
-    console.error("[saveMapAsImage]", err);
-    alert(
-      "ไม่สามารถบันทึกแผนที่โดยอัตโนมัติได้\n" +
-        "กรุณาใช้ Snipping Tool (Windows) หรือ ⌘+Shift+4 (Mac) แทน",
-    );
-  } finally {
-    hideLoading();
-  }
+async function saveMapAsImage() {
+  if (!State.map) return;
+
+  showLoading("กำลังบันทึกแผนที่เป็นรูปภาพ...");
+
+  const mapEl = document.getElementById("map");
+  let tmpCanvas = null; // canvas overlay ชั่วคราว
+
+  try {
+    if (typeof html2canvas === "undefined") {
+      throw new Error("html2canvas ยังไม่ได้โหลด");
+    }
+
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+
+    // ── ปิด popup และหยุด animation ก่อน capture ───────────────────
+    State.map.closePopup();
+    State.map.stop();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // ── วาดเส้น routing ลงบน canvas overlay ใน DOM ก่อน capture ────
+    // วิธีนี้บังคับ: เส้น routing เป็นส่วนหนึ่งของ DOM ที่ html2canvas capture
+    // ไม่ต้องคำนวณ coordinate system หลัง capture → ตรงเสมอ
+    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
+
+    if (gpsPhotos.length >= 2) {
+      // สร้าง canvas ที่มีขนาดเท่ากับ #map ตีดไว้บนแผนที่
+      tmpCanvas = document.createElement("canvas");
+      tmpCanvas.width  = mapEl.offsetWidth;
+      tmpCanvas.height = mapEl.offsetHeight;
+      tmpCanvas.style.cssText =
+        "position:absolute;top:0;left:0;width:100%;height:100%;"
+        + "z-index:9999;pointer-events:none;";
+      mapEl.appendChild(tmpCanvas);
+
+      // วาดเส้นด้วย CSS pixel coordinates ตรง → ไม่ต้อง * scale
+      // latLngToContainerPoint() ให้ค่า CSS pixel สัมพัทธ์กับ map container
+      const ctx2 = tmpCanvas.getContext("2d");
+      ctx2.strokeStyle = "#E50914";
+      ctx2.lineWidth   = 3;
+      ctx2.setLineDash([6, 9]);
+      ctx2.lineCap     = "round";
+      ctx2.lineJoin    = "round";
+      ctx2.globalAlpha = 0.9;
+      ctx2.beginPath();
+      gpsPhotos.forEach((photo, i) => {
+        const pt = State.map.latLngToContainerPoint([
+          photo.gps.latitude,
+          photo.gps.longitude,
+        ]);
+        if (i === 0) ctx2.moveTo(pt.x, pt.y);
+        else         ctx2.lineTo(pt.x, pt.y);
+      });
+      ctx2.stroke();
+    }
+
+    // ── capture ──────────────────────────────────────────────
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      allowTaint: true,
+      scale,
+      backgroundColor: "#141414",
+      logging: false,
+      onclone: (_clonedDoc, clonedEl) => {
+        // ซ่อน SVG overlay เป็นป้องกันไว้ (เส้น routing ของเราอยู่บน tmpCanvas แล้ว)
+        const overlay = clonedEl.querySelector(".leaflet-overlay-pane");
+        if (overlay) overlay.style.display = "none";
+      },
+    });
+
+    // ── save ───────────────────────────────────────────────
+    const link = document.createElement("a");
+    link.download = `picturegps-map-${fmtFilenameDate(new Date())}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    console.error("[saveMapAsImage]", err);
+    alert(
+      "ไม่สามารถบันทึกแผนที่โดยอัตโนมัติได้\n"
+        + "กรุณาใช้ Snipping Tool (Windows) หรือ ⧤+Shift+4 (Mac) แทน",
+    );
+  } finally {
+    // ลบ canvas overlay ออกเสมอ ไม่ว่าจะสำเร็จหรือ error
+    if (tmpCanvas && tmpCanvas.parentNode === mapEl) {
+      mapEl.removeChild(tmpCanvas);
+    }
+    hideLoading();
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -780,6 +842,10 @@ function buildPhotoCard(photo) {
         ? `
       <div class="card-actions">
         <button class="btn-focus-map" data-focus="${photo.id}">🗺️ แสดงบนแผนที่</button>
+        <a href="https://www.google.com/maps?q=${photo.gps.latitude},${photo.gps.longitude}" target="_blank" rel="noopener" class="btn-gmaps">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+          นำทางใน Google Maps
+        </a>
       </div>
     `
         : ""

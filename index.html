@@ -113,6 +113,32 @@
                         multiple
                         hidden
                     />
+
+                    <!-- Divider -->
+                    <div class="drop-divider">
+                        <span class="drop-divider-line"></span>
+                        <span class="drop-divider-text">หรือเปิดไฟล์ Track</span>
+                        <span class="drop-divider-line"></span>
+                    </div>
+
+                    <!-- Load GPX / KML -->
+                    <div class="drop-track-btns">
+                        <button class="btn btn-track" id="btn-load-gpx-home">
+                            🗺️ Load GPX
+                        </button>
+                        <button class="btn btn-track" id="btn-load-kml-home">
+                            📂 Load KML
+                        </button>
+                    </div>
+                    <p class="drop-formats">รองรับไฟล์ .gpx และ .kml</p>
+
+                    <!-- Hidden file input for GPX/KML on home screen -->
+                    <input
+                        type="file"
+                        id="gpx-kml-home-input"
+                        accept=".gpx,.kml"
+                        hidden
+                    />
                 </div>
             </section>
 
@@ -126,7 +152,7 @@
                                 class="btn btn-primary btn-sm"
                                 id="btn-add-more"
                             >
-                                ➕ เพิ่มรูป
+                                ➕ <span class="btn-label">เพิ่มรูป</span>
                             </button>
                         </div>
                         <div class="map-toolbar-right">
@@ -135,34 +161,60 @@
                                 id="btn-layer-toggle"
                                 title="สลับแผนที่"
                             >
-                                🛰️ ดาวเทียม
+                                🛰️ <span class="btn-label">ดาวเทียม</span>
                             </button>
                             <button
                                 class="btn btn-secondary btn-sm"
                                 id="btn-fit-bounds"
                             >
-                                🔍 ซูมให้พอดี
+                                🔍 <span class="btn-label">ซูมให้พอดี</span>
                             </button>
                             <div class="toolbar-sep"></div>
-                            <button
-                                class="btn btn-secondary btn-sm"
-                                id="btn-export-gpx"
-                                title="Export GPX"
-                            >
-                                📥 GPX
-                            </button>
-                            <button
-                                class="btn btn-secondary btn-sm"
-                                id="btn-export-kml"
-                                title="Export KML"
-                            >
-                                📥 KML
-                            </button>
+                            <!-- GPX Split Button -->
+                            <div class="btn-split-group" id="gpx-split-group">
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-main"
+                                    id="btn-export-gpx"
+                                    title="Export GPX"
+                                >📥 <span class="btn-label">GPX</span></button>
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-arrow"
+                                    id="btn-gpx-arrow"
+                                    title="ตัวเลือก GPX"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                >▾</button>
+                                <div class="btn-split-menu" id="gpx-menu" role="menu">
+                                    <button class="split-menu-item" id="gpx-menu-export">📥 Export GPX</button>
+                                    <button class="split-menu-item" id="gpx-menu-load">📂 Load GPX</button>
+                                </div>
+                            </div>
+                            <!-- KML Split Button -->
+                            <div class="btn-split-group" id="kml-split-group">
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-main"
+                                    id="btn-export-kml"
+                                    title="Export KML"
+                                >📤 <span class="btn-label">KML</span></button>
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-arrow"
+                                    id="btn-kml-arrow"
+                                    title="ตัวเลือก KML"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                >▾</button>
+                                <div class="btn-split-menu" id="kml-menu" role="menu">
+                                    <button class="split-menu-item" id="kml-menu-export">📤 Export KML</button>
+                                    <button class="split-menu-item" id="kml-menu-load">📂 Load KML</button>
+                                </div>
+                            </div>
+                            <!-- Hidden file input for GPX/KML import -->
+                            <input type="file" id="gpx-kml-input" accept=".gpx,.kml" hidden>
                             <button
                                 class="btn btn-secondary btn-sm"
                                 id="btn-save-map"
                             >
-                                💾 บันทึกแผนที่
+                                💾 <span class="btn-label">บันทึกแผนที่</span>
                             </button>
                         </div>
                     </div>
@@ -221,6 +273,19 @@
                             <span id="route-distance"></span>
                             <span class="route-stats-sep">·</span>
                             <span id="route-timerange"></span>
+                        </div>
+                        <!-- Imported Track Info Panel -->
+                        <div id="imported-track-info" class="imported-track-info hidden">
+                            <div class="imported-track-header">
+                                <span class="imported-track-icon">📂</span>
+                                <span id="imported-track-name" class="imported-track-name">Track</span>
+                                <button id="btn-clear-track" class="imported-track-close" title="ลบ track ที่ import">✕</button>
+                            </div>
+                            <div class="imported-track-stats">
+                                <span id="imported-track-pts"></span>
+                                <span class="route-stats-sep">·</span>
+                                <span id="imported-track-dist"></span>
+                            </div>
                         </div>
                         <div id="alert-no-gps" class="alert-box hidden">
                             ⚠️ <span id="alert-no-gps-text"></span>

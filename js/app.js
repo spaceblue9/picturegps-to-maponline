@@ -51,6 +51,9 @@ const State = {
   selectedId: null, // currently selected photo ID
   nextId: 1,
   timelineIndex: 0,
+  expandedCards: new Set(), // จำ card ไหน expand อยู่
+  // Imported GPX/KML track
+  importedTrack: null, // { name, points, polyline, wpMarkers }
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -89,6 +92,22 @@ const DOM = {
   btnTlNext: $("btn-tl-next"),
   btnExportGpx: $("btn-export-gpx"),
   btnExportKml: $("btn-export-kml"),
+  // GPX/KML load
+  gpxKmlInput: $("gpx-kml-input"),         // hidden input ใน toolbar
+  gpxKmlHomeInput: $("gpx-kml-home-input"), // hidden input ในหน้าแรก
+  btnLoadGpxHome: $("btn-load-gpx-home"),
+  btnLoadKmlHome: $("btn-load-kml-home"),
+  gpxMenuLoad: $("gpx-menu-load"),
+  kmlMenuLoad: $("kml-menu-load"),
+  gpxArrow: $("btn-gpx-arrow"),
+  kmlArrow: $("btn-kml-arrow"),
+  gpxMenu: $("gpx-menu"),
+  kmlMenu: $("kml-menu"),
+  importedTrackInfo: $("imported-track-info"),
+  importedTrackName: $("imported-track-name"),
+  importedTrackPts: $("imported-track-pts"),
+  importedTrackDist: $("imported-track-dist"),
+  btnClearTrack: $("btn-clear-track"),
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -116,22 +135,27 @@ function setupEventListeners() {
   DOM.btnExportGpx.addEventListener("click", exportGPX);
   DOM.btnExportKml.addEventListener("click", exportKML);
 
-  // Drag-and-drop บน drop area
+  // GPX/KML load
+  setupGpxKmlButtons();
+
+  // Drag-and-drop บน drop area (รองรับทั้งรูปภาพ และ GPX/KML)
   const da = DOM.dropArea;
   da.addEventListener("dragenter", (e) => {
     e.preventDefault();
-    da.classList.add("drag-over");
+    const hasTrack = Array.from(e.dataTransfer?.items || []).some((i) =>
+      i.name ? /\.(gpx|kml)$/i.test(i.name) : false
+    );
+    da.classList.add(hasTrack ? "drag-over-track" : "drag-over");
   });
   da.addEventListener("dragover", (e) => {
     e.preventDefault();
-    da.classList.add("drag-over");
   });
   da.addEventListener("dragleave", () => {
-    da.classList.remove("drag-over");
+    da.classList.remove("drag-over", "drag-over-track");
   });
   da.addEventListener("drop", (e) => {
     e.preventDefault();
-    da.classList.remove("drag-over");
+    da.classList.remove("drag-over", "drag-over-track");
     handleDroppedFiles(e.dataTransfer.files);
   });
 
@@ -161,9 +185,16 @@ function onFileInputChange(e) {
 }
 
 function handleDroppedFiles(fileList) {
-  const images = Array.from(fileList).filter((f) =>
-    f.type.startsWith("image/"),
-  );
+  const files = Array.from(fileList);
+
+  // แยก GPX/KML ออกจากรูปภาพ
+  const trackFiles = files.filter((f) => /\.(gpx|kml)$/i.test(f.name));
+  const images = files.filter((f) => f.type.startsWith("image/"));
+
+  // โหลด track ไฟล์แรกถ้ามี (รองรับ 1 ไฟล์ต่อครั้ง)
+  if (trackFiles.length) {
+    onGpxKmlFileSelected(trackFiles[0]);
+  }
   if (images.length) processFiles(images);
 }
 
@@ -381,7 +412,19 @@ function toggleLayer() {
     LAYER_ORDER[
       (LAYER_ORDER.indexOf(State.currentLayer) + 1) % LAYER_ORDER.length
     ];
-  DOM.btnLayerToggle.textContent = TILE_LAYERS[nextLayer].label;
+  const nextCfg = TILE_LAYERS[nextLayer];
+  // แยก emoji กับ label text เพื่ออัปเดตเฉพาะ .btn-label span
+  const parts = nextCfg.label.split(" ");
+  const emoji = parts[0];
+  const labelText = parts.slice(1).join(" ");
+  const labelSpan = DOM.btnLayerToggle.querySelector(".btn-label");
+  if (labelSpan) {
+    // อัปเดต text node (emoji) + span
+    DOM.btnLayerToggle.childNodes[0].textContent = emoji + " ";
+    labelSpan.textContent = labelText;
+  } else {
+    DOM.btnLayerToggle.textContent = nextCfg.label;
+  }
 }
 
 function refreshMap() {
@@ -588,6 +631,13 @@ function clearAll() {
     State.polyline = null;
   }
 
+  // ล้าง imported track ด้วย (ก่อน map.remove())
+  if (State.importedTrack) {
+    State.importedTrack.wpMarkers?.forEach((m) => State.map?.removeLayer(m));
+    if (State.importedTrack.polyline) State.map?.removeLayer(State.importedTrack.polyline);
+    State.importedTrack = null;
+  }
+
   // คืน object URLs
   State.photos.forEach((p) => {
     URL.revokeObjectURL(p.objectUrl);
@@ -596,6 +646,7 @@ function clearAll() {
   State.photos = [];
   State.selectedId = null;
   State.nextId = 1;
+  State.expandedCards.clear();
 
   // ทำลาย map instance
   if (State.map) {
@@ -610,7 +661,18 @@ function clearAll() {
   DOM.headerStats.textContent = "";
   DOM.photoList.innerHTML = "";
   DOM.routeStats.classList.add("hidden");
-  DOM.btnLayerToggle.textContent = TILE_LAYERS["satellite"].label; // next after street
+  DOM.importedTrackInfo.classList.add("hidden");
+  // reset layer toggle button label
+  const satLabel = TILE_LAYERS["satellite"].label.split(" ");
+  const satEmoji = satLabel[0];
+  const satText = satLabel.slice(1).join(" ");
+  const layerLabelSpan = DOM.btnLayerToggle.querySelector(".btn-label");
+  if (layerLabelSpan) {
+    DOM.btnLayerToggle.childNodes[0].textContent = satEmoji + " ";
+    layerLabelSpan.textContent = satText;
+  } else {
+    DOM.btnLayerToggle.textContent = TILE_LAYERS["satellite"].label;
+  }
   State.currentLayer = "street";
   State.tileLayer = null;
   DOM.timelineBar.classList.add("hidden");
@@ -618,94 +680,94 @@ function clearAll() {
   DOM.fileInput.value = "";
 }
 
-async function saveMapAsImage() {
-  if (!State.map) return;
-
-  showLoading("กำลังบันทึกแผนที่เป็นรูปภาพ...");
-
-  const mapEl = document.getElementById("map");
-  let tmpCanvas = null; // canvas overlay ชั่วคราว
-
-  try {
-    if (typeof html2canvas === "undefined") {
-      throw new Error("html2canvas ยังไม่ได้โหลด");
-    }
-
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
-
-    // ── ปิด popup และหยุด animation ก่อน capture ───────────────────
-    State.map.closePopup();
-    State.map.stop();
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    // ── วาดเส้น routing ลงบน canvas overlay ใน DOM ก่อน capture ────
-    // วิธีนี้บังคับ: เส้น routing เป็นส่วนหนึ่งของ DOM ที่ html2canvas capture
-    // ไม่ต้องคำนวณ coordinate system หลัง capture → ตรงเสมอ
-    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
-
-    if (gpsPhotos.length >= 2) {
-      // สร้าง canvas ที่มีขนาดเท่ากับ #map ตีดไว้บนแผนที่
-      tmpCanvas = document.createElement("canvas");
-      tmpCanvas.width  = mapEl.offsetWidth;
-      tmpCanvas.height = mapEl.offsetHeight;
-      tmpCanvas.style.cssText =
-        "position:absolute;top:0;left:0;width:100%;height:100%;"
-        + "z-index:9999;pointer-events:none;";
-      mapEl.appendChild(tmpCanvas);
-
-      // วาดเส้นด้วย CSS pixel coordinates ตรง → ไม่ต้อง * scale
-      // latLngToContainerPoint() ให้ค่า CSS pixel สัมพัทธ์กับ map container
-      const ctx2 = tmpCanvas.getContext("2d");
-      ctx2.strokeStyle = "#E50914";
-      ctx2.lineWidth   = 3;
-      ctx2.setLineDash([6, 9]);
-      ctx2.lineCap     = "round";
-      ctx2.lineJoin    = "round";
-      ctx2.globalAlpha = 0.9;
-      ctx2.beginPath();
-      gpsPhotos.forEach((photo, i) => {
-        const pt = State.map.latLngToContainerPoint([
-          photo.gps.latitude,
-          photo.gps.longitude,
-        ]);
-        if (i === 0) ctx2.moveTo(pt.x, pt.y);
-        else         ctx2.lineTo(pt.x, pt.y);
-      });
-      ctx2.stroke();
-    }
-
-    // ── capture ──────────────────────────────────────────────
-    const canvas = await html2canvas(mapEl, {
-      useCORS: true,
-      allowTaint: true,
-      scale,
-      backgroundColor: "#141414",
-      logging: false,
-      onclone: (_clonedDoc, clonedEl) => {
-        // ซ่อน SVG overlay เป็นป้องกันไว้ (เส้น routing ของเราอยู่บน tmpCanvas แล้ว)
-        const overlay = clonedEl.querySelector(".leaflet-overlay-pane");
-        if (overlay) overlay.style.display = "none";
-      },
-    });
-
-    // ── save ───────────────────────────────────────────────
-    const link = document.createElement("a");
-    link.download = `picturegps-map-${fmtFilenameDate(new Date())}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  } catch (err) {
-    console.error("[saveMapAsImage]", err);
-    alert(
-      "ไม่สามารถบันทึกแผนที่โดยอัตโนมัติได้\n"
-        + "กรุณาใช้ Snipping Tool (Windows) หรือ ⧤+Shift+4 (Mac) แทน",
-    );
-  } finally {
-    // ลบ canvas overlay ออกเสมอ ไม่ว่าจะสำเร็จหรือ error
-    if (tmpCanvas && tmpCanvas.parentNode === mapEl) {
-      mapEl.removeChild(tmpCanvas);
-    }
-    hideLoading();
-  }
+async function saveMapAsImage() {
+  if (!State.map) return;
+
+  showLoading("กำลังบันทึกแผนที่เป็นรูปภาพ...");
+
+  const mapEl = document.getElementById("map");
+  let tmpCanvas = null; // canvas overlay ชั่วคราว
+
+  try {
+    if (typeof html2canvas === "undefined") {
+      throw new Error("html2canvas ยังไม่ได้โหลด");
+    }
+
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+
+    // ── ปิด popup และหยุด animation ก่อน capture ───────────────────
+    State.map.closePopup();
+    State.map.stop();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // ── วาดเส้น routing ลงบน canvas overlay ใน DOM ก่อน capture ────
+    // วิธีนี้บังคับ: เส้น routing เป็นส่วนหนึ่งของ DOM ที่ html2canvas capture
+    // ไม่ต้องคำนวณ coordinate system หลัง capture → ตรงเสมอ
+    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
+
+    if (gpsPhotos.length >= 2) {
+      // สร้าง canvas ที่มีขนาดเท่ากับ #map ตีดไว้บนแผนที่
+      tmpCanvas = document.createElement("canvas");
+      tmpCanvas.width  = mapEl.offsetWidth;
+      tmpCanvas.height = mapEl.offsetHeight;
+      tmpCanvas.style.cssText =
+        "position:absolute;top:0;left:0;width:100%;height:100%;"
+        + "z-index:9999;pointer-events:none;";
+      mapEl.appendChild(tmpCanvas);
+
+      // วาดเส้นด้วย CSS pixel coordinates ตรง → ไม่ต้อง * scale
+      // latLngToContainerPoint() ให้ค่า CSS pixel สัมพัทธ์กับ map container
+      const ctx2 = tmpCanvas.getContext("2d");
+      ctx2.strokeStyle = "#E50914";
+      ctx2.lineWidth   = 3;
+      ctx2.setLineDash([6, 9]);
+      ctx2.lineCap     = "round";
+      ctx2.lineJoin    = "round";
+      ctx2.globalAlpha = 0.9;
+      ctx2.beginPath();
+      gpsPhotos.forEach((photo, i) => {
+        const pt = State.map.latLngToContainerPoint([
+          photo.gps.latitude,
+          photo.gps.longitude,
+        ]);
+        if (i === 0) ctx2.moveTo(pt.x, pt.y);
+        else         ctx2.lineTo(pt.x, pt.y);
+      });
+      ctx2.stroke();
+    }
+
+    // ── capture ──────────────────────────────────────────────
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      allowTaint: true,
+      scale,
+      backgroundColor: "#141414",
+      logging: false,
+      onclone: (_clonedDoc, clonedEl) => {
+        // ซ่อน SVG overlay เป็นป้องกันไว้ (เส้น routing ของเราอยู่บน tmpCanvas แล้ว)
+        const overlay = clonedEl.querySelector(".leaflet-overlay-pane");
+        if (overlay) overlay.style.display = "none";
+      },
+    });
+
+    // ── save ───────────────────────────────────────────────
+    const link = document.createElement("a");
+    link.download = `picturegps-map-${fmtFilenameDate(new Date())}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    console.error("[saveMapAsImage]", err);
+    alert(
+      "ไม่สามารถบันทึกแผนที่โดยอัตโนมัติได้\n"
+        + "กรุณาใช้ Snipping Tool (Windows) หรือ ⧤+Shift+4 (Mac) แทน",
+    );
+  } finally {
+    // ลบ canvas overlay ออกเสมอ ไม่ว่าจะสำเร็จหรือ error
+    if (tmpCanvas && tmpCanvas.parentNode === mapEl) {
+      mapEl.removeChild(tmpCanvas);
+    }
+    hideLoading();
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -813,6 +875,14 @@ function buildPhotoCard(photo) {
     )
     .join("");
 
+  // chevron SVG icon
+  const chevronSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  // ตรวจสอบ expanded state
+  const hasBody = metaItems.length > 0 || photo.hasGPS;
+  const isExpanded = State.expandedCards.has(photo.id);
+  if (isExpanded) card.classList.add("expanded");
+
   card.innerHTML = `
     <div class="card-top">
       <div class="card-thumb-wrap">
@@ -832,27 +902,45 @@ function buildPhotoCard(photo) {
             : '<span class="card-no-gps-tag">⚠️ ไม่มี GPS</span>'
         }
       </div>
-      <button class="card-remove-btn" data-remove="${photo.id}" title="ลบรูปนี้">✕</button>
+      <div class="card-top-actions">
+        ${hasBody ? `<button class="card-toggle" data-toggle="${photo.id}" title="ดูรายละเอียด">${chevronSVG}</button>` : ""}
+        <button class="card-remove-btn" data-remove="${photo.id}" title="ลบรูปนี้">✕</button>
+      </div>
     </div>
 
-    ${metaItems.length ? `<div class="card-meta">${metaHTML}</div>` : ""}
-
-    ${
-      photo.hasGPS
-        ? `
-      <div class="card-actions">
-        <button class="btn-focus-map" data-focus="${photo.id}">🗺️ แสดงบนแผนที่</button>
-        <a href="https://www.google.com/maps?q=${photo.gps.latitude},${photo.gps.longitude}" target="_blank" rel="noopener" class="btn-gmaps">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-          นำทางใน Google Maps
-        </a>
-      </div>
-    `
-        : ""
-    }
+    ${hasBody ? `
+    <div class="card-body">
+      ${metaItems.length ? `<div class="card-meta">${metaHTML}</div>` : ""}
+      ${
+        photo.hasGPS
+          ? `
+        <div class="card-actions">
+          <button class="btn-focus-map" data-focus="${photo.id}">🗺️ แสดงบนแผนที่</button>
+          <a href="https://www.google.com/maps?q=${photo.gps.latitude},${photo.gps.longitude}" target="_blank" rel="noopener" class="btn-gmaps">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            นำทางใน Google Maps
+          </a>
+        </div>
+      `
+          : ""
+      }
+    </div>
+    ` : ""}
   `;
 
-  // ──── Event listeners ────
+  // โ”€โ”€โ”€โ”€ Event listeners โ”€โ”€โ”€โ”€
+
+  // Toggle expand/collapse
+  card.querySelector("[data-toggle]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isNowExpanded = card.classList.toggle("expanded");
+    if (isNowExpanded) {
+      State.expandedCards.add(photo.id);
+    } else {
+      State.expandedCards.delete(photo.id);
+    }
+  });
+
   card.querySelector("[data-remove]").addEventListener("click", (e) => {
     e.stopPropagation();
     removePhoto(photo.id);
@@ -1068,6 +1156,361 @@ function escXml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+/* ────────────────────────────────────────────────────────────
+   GPX / KML LOAD
+   ─────────────────────────────────────────────────────────── */
+
+/** Setup event listeners สำหรับ GPX/KML buttons ทั้งหมด */
+function setupGpxKmlButtons() {
+  // ── ปุ่มในหน้าแรก ──────────────────────────────────────
+  DOM.btnLoadGpxHome?.addEventListener("click", () => {
+    DOM.gpxKmlHomeInput.accept = ".gpx";
+    DOM.gpxKmlHomeInput.click();
+  });
+  DOM.btnLoadKmlHome?.addEventListener("click", () => {
+    DOM.gpxKmlHomeInput.accept = ".kml";
+    DOM.gpxKmlHomeInput.click();
+  });
+  DOM.gpxKmlHomeInput?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f) onGpxKmlFileSelected(f);
+    e.target.value = "";
+  });
+
+  // ── Split menu ใน Toolbar ──────────────────────────────
+  // GPX arrow toggle
+  DOM.gpxArrow?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = DOM.gpxMenu.classList.toggle("open");
+    DOM.gpxArrow.setAttribute("aria-expanded", isOpen);
+    if (isOpen) DOM.kmlMenu.classList.remove("open");
+  });
+  // KML arrow toggle
+  DOM.kmlArrow?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = DOM.kmlMenu.classList.toggle("open");
+    DOM.kmlArrow.setAttribute("aria-expanded", isOpen);
+    if (isOpen) DOM.gpxMenu.classList.remove("open");
+  });
+  // ปิด menu เมื่อคลิกที่อื่น
+  document.addEventListener("click", () => {
+    DOM.gpxMenu?.classList.remove("open");
+    DOM.kmlMenu?.classList.remove("open");
+    DOM.gpxArrow?.setAttribute("aria-expanded", "false");
+    DOM.kmlArrow?.setAttribute("aria-expanded", "false");
+  });
+
+  // Export จาก split menu
+  $("gpx-menu-export")?.addEventListener("click", exportGPX);
+  $("kml-menu-export")?.addEventListener("click", exportKML);
+
+  // Load จาก split menu
+  DOM.gpxMenuLoad?.addEventListener("click", () => {
+    DOM.gpxKmlInput.accept = ".gpx";
+    DOM.gpxKmlInput.click();
+  });
+  DOM.kmlMenuLoad?.addEventListener("click", () => {
+    DOM.gpxKmlInput.accept = ".kml";
+    DOM.gpxKmlInput.click();
+  });
+  DOM.gpxKmlInput?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f) onGpxKmlFileSelected(f);
+    e.target.value = "";
+  });
+
+  // ปุ่มลบ track
+  DOM.btnClearTrack?.addEventListener("click", clearImportedTrack);
+}
+
+/** อ่านไฟล์ที่เลือก → parse → load ขึ้น map */
+async function onGpxKmlFileSelected(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext !== "gpx" && ext !== "kml") {
+    alert("รองรับเฉพาะไฟล์ .gpx และ .kml เท่านั้น");
+    return;
+  }
+  showLoading(`กำลังโหลด ${file.name}...`);
+  try {
+    const text = await file.text();
+    let points;
+    if (ext === "gpx") {
+      points = parseGPX(text);
+    } else {
+      points = parseKML(text);
+    }
+    if (!points.length) {
+      alert("ไม่พบข้อมูลพิกัดในไฟล์นี้ กรุณาตรวจสอบไฟล์อีกครั้ง");
+      return;
+    }
+    await loadTrackToMap(file.name, points);
+  } catch (err) {
+    console.error("[GPX/KML]", err);
+    alert("เกิดข้อผิดพลาดในการอ่านไฟล์: " + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+/**
+ * Parse GPX XML → array of { lat, lng, ele?, time?, name? }
+ * รองรับทั้ง <trkpt> (track points) และ <wpt> (waypoints)
+ */
+function parseGPX(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "application/xml");
+  const points = [];
+
+  // Track segments
+  doc.querySelectorAll("trkpt").forEach((pt) => {
+    const lat = parseFloat(pt.getAttribute("lat"));
+    const lon = parseFloat(pt.getAttribute("lon"));
+    if (isNaN(lat) || isNaN(lon)) return;
+    const ele = pt.querySelector("ele")?.textContent;
+    const timeEl = pt.querySelector("time")?.textContent;
+    const name = pt.querySelector("name")?.textContent || null;
+    points.push({
+      lat,
+      lng: lon,
+      ele: ele ? parseFloat(ele) : null,
+      time: timeEl ? new Date(timeEl) : null,
+      name,
+      isWaypoint: false,
+    });
+  });
+
+  // Waypoints (named points)
+  doc.querySelectorAll("wpt").forEach((pt) => {
+    const lat = parseFloat(pt.getAttribute("lat"));
+    const lon = parseFloat(pt.getAttribute("lon"));
+    if (isNaN(lat) || isNaN(lon)) return;
+    const ele = pt.querySelector("ele")?.textContent;
+    const timeEl = pt.querySelector("time")?.textContent;
+    const name = pt.querySelector("name")?.textContent || null;
+    points.push({
+      lat,
+      lng: lon,
+      ele: ele ? parseFloat(ele) : null,
+      time: timeEl ? new Date(timeEl) : null,
+      name,
+      isWaypoint: true,
+    });
+  });
+
+  return points;
+}
+
+/**
+ * Parse KML XML → array of { lat, lng, ele?, name? }
+ * รองรับ <Placemark> (Point + LineString)
+ */
+function parseKML(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "application/xml");
+  const points = [];
+
+  // Placemarks ที่เป็น Point (waypoints)
+  doc.querySelectorAll("Placemark").forEach((pm) => {
+    const name = pm.querySelector("name")?.textContent?.trim() || null;
+
+    // Point
+    const coordEl = pm.querySelector("Point > coordinates");
+    if (coordEl) {
+      const [lonStr, latStr, eleStr] = coordEl.textContent.trim().split(",");
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lonStr);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        points.push({
+          lat,
+          lng,
+          ele: eleStr ? parseFloat(eleStr) : null,
+          time: null,
+          name,
+          isWaypoint: true,
+        });
+      }
+      return;
+    }
+
+    // LineString / MultiGeometry
+    const lineCoordEl = pm.querySelector("LineString > coordinates, MultiGeometry coordinates");
+    if (lineCoordEl) {
+      lineCoordEl.textContent
+        .trim()
+        .split(/\s+/)
+        .forEach((coord, i) => {
+          const parts = coord.split(",");
+          const lat = parseFloat(parts[1]);
+          const lng = parseFloat(parts[0]);
+          const ele = parts[2] ? parseFloat(parts[2]) : null;
+          if (!isNaN(lat) && !isNaN(lng)) {
+            points.push({ lat, lng, ele, time: null, name: i === 0 ? name : null, isWaypoint: false });
+          }
+        });
+    }
+  });
+
+  return points;
+}
+
+/**
+ * โหลด track ขึ้นแผนที่:
+ * - วาด polyline สีฟ้า
+ * - วาง marker จุดแวะ (waypoints หรือ named points)
+ * - เปิดหน้า map ถ้ายังไม่เปิด
+ * - แสดง track info panel ใน sidebar
+ */
+async function loadTrackToMap(filename, points) {
+  // ล้าง track เก่าก่อน
+  clearImportedTrack();
+
+  // ── เปิดหน้า app ถ้ายังอยู่หน้าแรก ─────────────────────
+  const isFirstLoad = DOM.appContent.classList.contains("hidden");
+  if (isFirstLoad) {
+    DOM.uploadZone.classList.add("hidden");
+    DOM.appContent.classList.remove("hidden");
+    DOM.btnClear.classList.remove("hidden");
+    await waitForPaint();
+  }
+
+  // ── สร้าง map ถ้ายังไม่มี ────────────────────────────
+  if (!State.map) {
+    initMap();
+  } else {
+    State.map.invalidateSize();
+  }
+
+  // แยก track points กับ waypoints สำหรับแสดง
+  const trackPts  = points.filter((p) => !p.isWaypoint);
+  const waypoints = points.filter((p) => p.isWaypoint || p.name);
+
+  // ใช้ทุก points สำหรับวาดเส้น (รวม waypoints ด้วย)
+  const allForLine = points.length ? points : trackPts;
+  const lineCoords = allForLine.map((p) => [p.lat, p.lng]);
+
+  // ── วาด polyline สีฟ้า ──────────────────────────────
+  let trackPolyline = null;
+  if (lineCoords.length >= 2) {
+    trackPolyline = L.polyline(lineCoords, {
+      color: "#2196F3",
+      weight: 3,
+      opacity: 0.85,
+      dashArray: null,
+      lineCap: "round",
+      lineJoin: "round",
+    }).addTo(State.map);
+  }
+
+  // ── วาง waypoint markers ─────────────────────────────
+  const wpMarkers = [];
+  const wpSrc = waypoints.length > 0 ? waypoints : (trackPts.length === 0 ? [] : [trackPts[0], trackPts[trackPts.length - 1]]);
+  wpSrc.forEach((pt) => {
+    const icon = L.divIcon({
+      className: "track-waypoint-marker",
+      html: `<div class="track-wp-dot"></div>`,
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+      popupAnchor: [0, -8],
+    });
+    const m = L.marker([pt.lat, pt.lng], { icon });
+
+    // สร้าง popup สำหรับทุกจุด (มีชื่อหรือไม่ก็ตาม)
+    const gmapsUrl = `https://www.google.com/maps?q=${pt.lat},${pt.lng}`;
+    const gmapsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${pt.lat},${pt.lng}`;
+
+    const rows = [
+      pt.name ? `<div class="wp-popup-name">${escHtml(pt.name)}</div>` : "",
+      `<div class="wp-popup-row"><span>📍</span><span>${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</span></div>`,
+      pt.ele != null ? `<div class="wp-popup-row"><span>⛰️</span><span>${pt.ele.toFixed(1)} เมตร</span></div>` : "",
+      pt.time ? `<div class="wp-popup-row"><span>📅</span><span>${fmtDateTime(pt.time)}</span></div>` : "",
+    ].filter(Boolean).join("");
+
+    const popupHTML = `
+      <div class="wp-popup">
+        ${rows}
+        <div class="wp-popup-actions">
+          <a href="${gmapsUrl}" target="_blank" rel="noopener" class="wp-popup-btn wp-popup-btn-view">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            ดูบนแผนที่
+          </a>
+          <a href="${gmapsNavUrl}" target="_blank" rel="noopener" class="wp-popup-btn wp-popup-btn-nav">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            นำทาง
+          </a>
+        </div>
+      </div>`;
+
+    m.bindPopup(popupHTML, {
+      maxWidth: 240,
+      className: "dark-popup",
+    });
+
+    m.addTo(State.map);
+    wpMarkers.push(m);
+  });
+
+
+  // ── บันทึก State ────────────────────────────────────
+  const totalDist = calcTrackDistance(allForLine);
+  State.importedTrack = {
+    name: filename,
+    points,
+    polyline: trackPolyline,
+    wpMarkers,
+    totalDist,
+  };
+
+  // ── Fit bounds ──────────────────────────────────────
+  setTimeout(() => {
+    if (!State.map || !lineCoords.length) return;
+    if (lineCoords.length === 1) {
+      State.map.setView(lineCoords[0], 16, { animate: true });
+    } else {
+      State.map.fitBounds(L.latLngBounds(lineCoords), {
+        padding: [50, 50],
+        maxZoom: 17,
+        animate: true,
+      });
+    }
+  }, 350);
+
+  // ── แสดง Track Info panel ────────────────────────────
+  renderImportedTrackInfo();
+
+  // ── อัปเดต header stats ─────────────────────────────
+  renderHeaderStats();
+}
+
+/** ลบ imported track ออกจากแผนที่และ state */
+function clearImportedTrack() {
+  if (!State.importedTrack) return;
+  State.importedTrack.wpMarkers?.forEach((m) => State.map?.removeLayer(m));
+  if (State.importedTrack.polyline) State.map?.removeLayer(State.importedTrack.polyline);
+  State.importedTrack = null;
+  DOM.importedTrackInfo.classList.add("hidden");
+  renderHeaderStats();
+}
+
+/** แสดง track info panel ใน sidebar */
+function renderImportedTrackInfo() {
+  if (!State.importedTrack) return;
+  const { name, points, totalDist } = State.importedTrack;
+  DOM.importedTrackName.textContent = name;
+  DOM.importedTrackPts.textContent = `🗺️ ${points.length} จุด`;
+  DOM.importedTrackDist.textContent = `📐 ${fmtDistance(totalDist)}`;
+  DOM.importedTrackInfo.classList.remove("hidden");
+}
+
+/** คำนวณระยะทางรวมของ track (เมตร) */
+function calcTrackDistance(pts) {
+  if (pts.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    total += haversine(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+  }
+  return total;
 }
 
 /* ────────────────────────────────────────────────────────────

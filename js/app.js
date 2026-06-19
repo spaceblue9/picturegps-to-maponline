@@ -45,6 +45,7 @@ const State = {
   photos: [], // PhotoData[]
   map: null, // L.Map instance
   markers: [], // L.Marker[]
+  clusterGroup: null, // L.markerClusterGroup
   polyline: null, // L.Polyline
   tileLayer: null, // L.TileLayer
   currentLayer: "street", // 'street' | 'satellite' | 'terrain'
@@ -52,8 +53,12 @@ const State = {
   nextId: 1,
   timelineIndex: 0,
   expandedCards: new Set(), // จำ card ไหน expand อยู่
-  // Imported GPX/KML track
   importedTrack: null, // { name, points, polyline, wpMarkers }
+  filter: "all", // 'all' | 'gps' | 'nogps'
+  sortBy: "time", // 'time' | 'name'
+  pinningPhotoId: null, // ID ของรูปที่กำลัง manual pin
+  searchMarker: null, // marker ชั่วคราวจาก geocoding search
+  undoTimer: null, // timer สำหรับ undo delete
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -114,6 +119,25 @@ const DOM = {
    INIT
    ───────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
+  // A4: ตรวจสอบว่า CDN libraries โหลดได้
+  if (typeof L === "undefined") {
+    document.body.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;
+                  background:#141414;color:#fff;font-family:sans-serif;text-align:center;padding:32px;">
+        <div>
+          <div style="font-size:48px;margin-bottom:16px;">🌐</div>
+          <h2 style="color:#E50914;margin-bottom:12px;">ต้องการการเชื่อมต่อ Internet</h2>
+          <p style="color:#aaa;max-width:360px;line-height:1.6;">
+            PictureGPS Map โหลด Leaflet.js และไลบรารีอื่นๆ จาก CDN<br>
+            กรุณาเชื่อมต่อ Internet แล้วรีเฟรชหน้าเว็บ
+          </p>
+          <button onclick="location.reload()" style="margin-top:20px;padding:10px 24px;
+            background:#E50914;color:#fff;border:none;border-radius:6px;
+            font-size:15px;cursor:pointer;">🔄 ลองใหม่</button>
+        </div>
+      </div>`;
+    return;
+  }
   setupEventListeners();
 });
 
@@ -125,7 +149,31 @@ function setupEventListeners() {
   DOM.btnAddMore.addEventListener("click", () => DOM.fileInput.click());
   DOM.fileInput.addEventListener("change", onFileInputChange);
   DOM.btnClear.addEventListener("click", clearAll);
-  DOM.btnSaveMap.addEventListener("click", saveMapAsImage);
+
+  // D13: Save map — split button (map only / full page)
+  const btnSaveMap = document.getElementById("btn-save-map");
+  const btnSaveArrow = document.getElementById("btn-save-arrow");
+  const saveMenu = document.getElementById("save-menu");
+  if (btnSaveMap) btnSaveMap.addEventListener("click", saveMapAsImage);
+  if (btnSaveArrow && saveMenu) {
+    btnSaveArrow.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = saveMenu.classList.toggle("open");
+      btnSaveArrow.setAttribute("aria-expanded", String(open));
+    });
+    document.getElementById("save-menu-map")?.addEventListener("click", () => {
+      saveMenu.classList.remove("open");
+      saveMapAsImage();
+    });
+    document.getElementById("save-menu-full")?.addEventListener("click", () => {
+      saveMenu.classList.remove("open");
+      saveFullPageAsImage();
+    });
+  }
+
+  // D8: Export PDF
+  document.getElementById("btn-export-pdf")?.addEventListener("click", exportPDF);
+
   DOM.btnFitBounds.addEventListener("click", fitMapToMarkers);
   $("btn-layer-toggle").addEventListener("click", toggleLayer);
 
@@ -135,27 +183,46 @@ function setupEventListeners() {
   DOM.btnExportGpx.addEventListener("click", exportGPX);
   DOM.btnExportKml.addEventListener("click", exportKML);
 
+  // B10: Filter pills
+  document.querySelectorAll(".filter-pill").forEach((el) => {
+    el.addEventListener("click", () => {
+      State.filter = el.dataset.filter;
+      renderSidebar();
+    });
+  });
+  document.querySelectorAll(".sort-pill").forEach((el) => {
+    el.addEventListener("click", () => {
+      State.sortBy = el.dataset.sort;
+      renderSidebar();
+    });
+  });
+
   // GPX/KML load
   setupGpxKmlButtons();
 
-  // Drag-and-drop บน drop area (รองรับทั้งรูปภาพ และ GPX/KML)
+  // C6: Search
+  setupSearch();
+
+  // C7: Resizable sidebar
+  setupSidebarResizer();
+
+  // A1: Drag-and-drop บน drop area — ใช้ drag-over ทั่วไป
   const da = DOM.dropArea;
   da.addEventListener("dragenter", (e) => {
     e.preventDefault();
-    const hasTrack = Array.from(e.dataTransfer?.items || []).some((i) =>
-      i.name ? /\.(gpx|kml)$/i.test(i.name) : false
-    );
-    da.classList.add(hasTrack ? "drag-over-track" : "drag-over");
+    da.classList.add("drag-over");
   });
   da.addEventListener("dragover", (e) => {
     e.preventDefault();
   });
-  da.addEventListener("dragleave", () => {
-    da.classList.remove("drag-over", "drag-over-track");
+  da.addEventListener("dragleave", (e) => {
+    if (!da.contains(e.relatedTarget)) {
+      da.classList.remove("drag-over");
+    }
   });
   da.addEventListener("drop", (e) => {
     e.preventDefault();
-    da.classList.remove("drag-over", "drag-over-track");
+    da.classList.remove("drag-over");
     handleDroppedFiles(e.dataTransfer.files);
   });
 
@@ -166,6 +233,12 @@ function setupEventListeners() {
     if (!DOM.appContent.classList.contains("hidden")) {
       handleDroppedFiles(e.dataTransfer.files);
     }
+  });
+
+  // สำหรับ split menus GPX/KML
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".btn-split-menu").forEach((m) => m.classList.remove("open"));
+    if (saveMenu) saveMenu.classList.remove("open");
   });
 
   // resize window → แจ้ง Leaflet ปรับขนาด
@@ -428,12 +501,13 @@ function toggleLayer() {
 }
 
 function refreshMap() {
-  // ลบ markers เดิม
-  State.markers.forEach((m) => State.map.removeLayer(m));
+  // D12: ลบ cluster group เดิม
+  if (State.clusterGroup) {
+    State.map?.removeLayer(State.clusterGroup);
+    State.clusterGroup = null;
+  }
   State.markers = [];
-  State.photos.forEach((p) => {
-    p.marker = null;
-  });
+  State.photos.forEach((p) => { p.marker = null; });
 
   // ลบ polyline เดิม
   if (State.polyline) {
@@ -444,13 +518,33 @@ function refreshMap() {
   const gpsPhotos = State.photos.filter((p) => p.hasGPS);
   if (!gpsPhotos.length) return;
 
+  // D12: สร้าง cluster group
+  const useCluster = typeof L.markerClusterGroup === "function";
+  if (useCluster) {
+    State.clusterGroup = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 50,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          html: `<div class="cluster-icon">${count}</div>`,
+          className: "cluster-icon-container",
+          iconSize: [40, 40],
+        });
+      },
+    });
+  }
+
   // วาง markers
   gpsPhotos.forEach((photo) => {
     const m = buildMarker(photo);
-    m.addTo(State.map);
     State.markers.push(m);
     photo.marker = m;
+    if (useCluster) State.clusterGroup.addLayer(m);
+    else m.addTo(State.map);
   });
+
+  if (useCluster) State.map.addLayer(State.clusterGroup);
 
   // วาด routing polyline ถ้ามี >= 2 จุด
   if (gpsPhotos.length >= 2) {
@@ -468,7 +562,10 @@ function refreshMap() {
 
 function buildMarker(photo) {
   const isSelected = State.selectedId === photo.id;
-  const icon = makeNumberIcon(photo.orderIndex, isSelected);
+  // C9: manual pin → เหลือง
+  const icon = photo.manualPin
+    ? makeManualPinIcon(photo.orderIndex, isSelected)
+    : makeNumberIcon(photo.orderIndex, isSelected);
 
   const m = L.marker([photo.gps.latitude, photo.gps.longitude], { icon }).on(
     "click",
@@ -507,6 +604,7 @@ function buildPopupHTML(photo) {
     [photo.exif?.Make, photo.exif?.Model].filter(Boolean).join(" ") || null;
 
   const gmapsUrl = `https://www.google.com/maps?q=${photo.gps?.latitude},${photo.gps?.longitude}`;
+  const coordStr = `${lat}, ${lng}`;
 
   return `
     <div class="popup-content">
@@ -518,7 +616,11 @@ function buildPopupHTML(photo) {
       <div class="popup-info">
         <div class="popup-filename">${escHtml(photo.file.name)}</div>
         <div class="popup-row"><span>📅</span><span>${date}</span></div>
-        <div class="popup-row"><span>📍</span><span>${lat}, ${lng}</span></div>
+        <div class="popup-row">
+          <span>📍</span>
+          <span>${lat}, ${lng}</span>
+          <button class="popup-copy-btn" title="Copy พิกัด" onclick="navigator.clipboard.writeText('${coordStr}').then(()=>{this.textContent='✓';this.style.color='#4caf50';setTimeout(()=>{this.textContent='📋';this.style.color=''},1500)})">&#x1F4CB;</button>
+        </div>
         ${alt ? `<div class="popup-row"><span>⛰️</span><span>${alt}</span></div>` : ""}
         ${cam ? `<div class="popup-row"><span>📷</span><span>${escHtml(cam)}</span></div>` : ""}
         <a href="${gmapsUrl}" target="_blank" rel="noopener" class="popup-gmaps-btn">
@@ -558,7 +660,10 @@ function selectPhoto(photoId) {
   // อัปเดต icon ของ markers
   State.photos.forEach((p) => {
     if (p.marker) {
-      p.marker.setIcon(makeNumberIcon(p.orderIndex, p.id === photoId));
+      const icon = p.manualPin
+        ? makeManualPinIcon(p.orderIndex, p.id === photoId)
+        : makeNumberIcon(p.orderIndex, p.id === photoId);
+      p.marker.setIcon(icon);
     }
   });
 
@@ -575,9 +680,14 @@ function selectPhoto(photoId) {
   // pan แผนที่ไปที่รูป
   const photo = State.photos.find((p) => p.id === photoId);
   if (photo?.gps) {
-    State.map.panTo([photo.gps.latitude, photo.gps.longitude], {
-      animate: true,
-    });
+    // D12: ถ้า marker อยู่ใน cluster ต้อง spiderfy ก่อน
+    if (State.clusterGroup && photo.marker) {
+      State.clusterGroup.zoomToShowLayer(photo.marker, () => {
+        State.map.panTo([photo.gps.latitude, photo.gps.longitude], { animate: true });
+      });
+    } else {
+      State.map.panTo([photo.gps.latitude, photo.gps.longitude], { animate: true });
+    }
   }
 }
 
@@ -598,8 +708,60 @@ function removePhoto(photoId) {
   const photo = State.photos.find((p) => p.id === photoId);
   if (!photo) return;
 
+  // B14: Undo — ซ่อน marker ชั่วคราวก่อน
+  if (photo.marker) {
+    photo.marker.setOpacity(0.25);
+    if (photo.marker.getElement) {
+      const el = photo.marker.getElement();
+      if (el) el.style.filter = "grayscale(1) opacity(0.35)";
+    }
+  }
+
+  // ยกเลิก undo timer เดิม (ถ้ามี)
+  if (State.undoTimer) {
+    clearTimeout(State.undoTimer);
+    State.undoTimer = null;
+    // ลบ toast เก่าทันที
+    document.querySelectorAll(".toast").forEach((t) => t.remove());
+  }
+
+  const shortName = truncate(photo.file.name, 24);
+
+  showToast(
+    `ลบ "${shortName}" แล้ว`,
+    "ยกเลิก",
+    () => {
+      // Undo: คืน opacity
+      if (photo.marker) {
+        photo.marker.setOpacity(1);
+        const el = photo.marker.getElement?.();
+        if (el) el.style.filter = "";
+      }
+      clearTimeout(State.undoTimer);
+      State.undoTimer = null;
+    },
+    5000,
+    () => {
+      // หมดเวลา: ลบจริง
+      _doRemovePhoto(photoId);
+    }
+  );
+
+  State.undoTimer = setTimeout(() => {
+    State.undoTimer = null;
+  }, 5200);
+}
+
+/** ลบรูปจริงและ re-render */
+function _doRemovePhoto(photoId) {
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
   // ลบ marker จากแผนที่
-  if (photo.marker) State.map.removeLayer(photo.marker);
+  if (photo.marker) {
+    if (State.clusterGroup) State.clusterGroup.removeLayer(photo.marker);
+    else State.map?.removeLayer(photo.marker);
+  }
 
   // คืน memory
   URL.revokeObjectURL(photo.objectUrl);
@@ -610,7 +772,7 @@ function removePhoto(photoId) {
   State.photos = State.photos.filter((p) => p.id !== photoId);
   if (State.selectedId === photoId) State.selectedId = null;
 
-  if (State.photos.length === 0) {
+  if (State.photos.length === 0 && !State.importedTrack) {
     clearAll();
     return;
   }
@@ -623,7 +785,11 @@ function removePhoto(photoId) {
 }
 
 function clearAll() {
-  // ลบ layers
+  // D12: ลบ cluster group
+  if (State.clusterGroup) {
+    State.map?.removeLayer(State.clusterGroup);
+    State.clusterGroup = null;
+  }
   State.markers.forEach((m) => State.map?.removeLayer(m));
   State.markers = [];
   if (State.polyline) {
@@ -631,7 +797,13 @@ function clearAll() {
     State.polyline = null;
   }
 
-  // ล้าง imported track ด้วย (ก่อน map.remove())
+  // C6: ลบ search marker
+  if (State.searchMarker) {
+    State.map?.removeLayer(State.searchMarker);
+    State.searchMarker = null;
+  }
+
+  // ล้าง imported track
   if (State.importedTrack) {
     State.importedTrack.wpMarkers?.forEach((m) => State.map?.removeLayer(m));
     if (State.importedTrack.polyline) State.map?.removeLayer(State.importedTrack.polyline);
@@ -647,6 +819,12 @@ function clearAll() {
   State.selectedId = null;
   State.nextId = 1;
   State.expandedCards.clear();
+  State.filter = "all";
+  State.sortBy = "time";
+  State.pinningPhotoId = null;
+
+  // ยกเลิก pin mode ถ้าเปิดอยู่
+  cancelPinMode?.();
 
   // ทำลาย map instance
   if (State.map) {
@@ -774,12 +952,18 @@ async function saveMapAsImage() {
    SIDEBAR / UI RENDERING
    ───────────────────────────────────────────────────────────── */
 function renderSidebar() {
+  // B10: Filter + Sort
+  let photos = [...State.photos];
+  if (State.filter === "gps")   photos = photos.filter((p) => p.hasGPS);
+  if (State.filter === "nogps") photos = photos.filter((p) => !p.hasGPS);
+  if (State.sortBy === "name")  photos.sort((a, b) => a.file.name.localeCompare(b.file.name));
+
   DOM.photoList.innerHTML = "";
-  State.photos.forEach((p) => DOM.photoList.appendChild(buildPhotoCard(p)));
+  photos.forEach((p) => DOM.photoList.appendChild(buildPhotoCard(p)));
 
   DOM.photoCount.textContent = State.photos.length;
 
-  // route stats (distance + time range)
+  // route stats
   renderRouteStats();
 
   const noGps = State.photos.filter((p) => !p.hasGPS);
@@ -789,6 +973,14 @@ function renderSidebar() {
   } else {
     DOM.alertNoGps.classList.add("hidden");
   }
+
+  // B10: sync active pill state
+  document.querySelectorAll(".filter-pill").forEach((el) => {
+    el.classList.toggle("active", el.dataset.filter === State.filter);
+  });
+  document.querySelectorAll(".sort-pill").forEach((el) => {
+    el.classList.toggle("active", el.dataset.sort === State.sortBy);
+  });
 }
 
 function buildPhotoCard(photo) {
@@ -889,7 +1081,7 @@ function buildPhotoCard(photo) {
         <img src="${photo.displayUrl}" class="card-thumb" alt="" loading="lazy"
              onerror="this.style.opacity='0.3'">
         <div class="card-order-badge">${photo.orderIndex}</div>
-        ${!photo.hasGPS ? '<div class="card-no-gps-bar">ไม่มี GPS</div>' : ""}
+        ${photo.manualPin ? '<div class="card-no-gps-bar card-manual-pin-bar">📍 Manual</div>' : (!photo.hasGPS ? '<div class="card-no-gps-bar">ไม่มี GPS</div>' : "")}
       </div>
       <div class="card-info">
         <div class="card-filename" title="${escHtml(photo.file.name)}">
@@ -922,7 +1114,9 @@ function buildPhotoCard(photo) {
           </a>
         </div>
       `
-          : ""
+          : `<div class="card-actions">
+          <button class="btn-pin-map" data-pin="${photo.id}">📍 ปักหมุดบนแผนที่</button>
+        </div>`
       }
     </div>
     ` : ""}
@@ -949,6 +1143,13 @@ function buildPhotoCard(photo) {
   card.querySelector("[data-focus]")?.addEventListener("click", (e) => {
     e.stopPropagation();
     focusPhoto(photo.id);
+  });
+
+  // C9: manual pin button
+  card.querySelector("[data-pin]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (State.map) startPinMode(photo.id);
+    else showToast("ต้องโหลดรูปก่อนถึงปักหมุดได้", "", null, 3000);
   });
 
   card.addEventListener("click", () => {
@@ -1479,6 +1680,11 @@ async function loadTrackToMap(filename, points) {
   // ── แสดง Track Info panel ────────────────────────────
   renderImportedTrackInfo();
 
+  // A3: ซ่อน Timeline ถ้าไม่มีรูป (GPX-only mode)
+  if (State.photos.filter((p) => p.hasGPS).length < 2) {
+    DOM.timelineBar.classList.add("hidden");
+  }
+
   // ── อัปเดต header stats ─────────────────────────────
   renderHeaderStats();
 }
@@ -1631,4 +1837,455 @@ function escHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/* ─────────────────────────────────────────────────────────────
+   B14: TOAST NOTIFICATION (UNDO)
+   ───────────────────────────────────────────────────────────── */
+/**
+ * แสดง Toast notification พร้อม Undo button
+ * @param {string} msg ข้อความ
+ * @param {string} undoLabel ข้อความบน Undo button
+ * @param {Function} onUndo เรียกเมื่อกด Undo
+ * @param {number} duration ms ก่อนหายไปอัตโนมัติ
+ * @param {Function} onExpire เรียกเมื่อหมดเวลา
+ */
+function showToast(msg, undoLabel, onUndo, duration = 4000, onExpire = null) {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.innerHTML = `
+    <span class="toast-msg">${msg}</span>
+    ${undoLabel ? `<button class="toast-undo-btn">${undoLabel}</button>` : ""}
+  `;
+
+  container.appendChild(toast);
+  // Trigger animation
+  requestAnimationFrame(() => toast.classList.add("toast-show"));
+
+  let dismissed = false;
+
+  function dismiss(runExpire) {
+    if (dismissed) return;
+    dismissed = true;
+    toast.classList.remove("toast-show");
+    toast.classList.add("toast-hide");
+    setTimeout(() => toast.remove(), 350);
+    if (runExpire && onExpire) onExpire();
+  }
+
+  if (undoLabel) {
+    toast.querySelector(".toast-undo-btn").addEventListener("click", () => {
+      dismiss(false);
+      if (onUndo) onUndo();
+    });
+  }
+
+  const timer = setTimeout(() => dismiss(true), duration);
+
+  toast.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("toast-undo-btn")) {
+      clearTimeout(timer);
+      dismiss(true);
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C6: SEARCH / GEOCODING (Nominatim)
+   ───────────────────────────────────────────────────────────── */
+let _searchDebounce = null;
+
+function setupSearch() {
+  const input = document.getElementById("search-input");
+  const results = document.getElementById("search-results");
+  if (!input || !results) return;
+
+  input.addEventListener("input", () => {
+    clearTimeout(_searchDebounce);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      results.innerHTML = "";
+      results.classList.add("hidden");
+      return;
+    }
+    _searchDebounce = setTimeout(() => geocodeSearch(q, results, input), 500);
+  });
+
+  // ปิด results เมื่อ click outside
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-box")) {
+      results.classList.add("hidden");
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      results.classList.add("hidden");
+      input.blur();
+    }
+  });
+}
+
+async function geocodeSearch(q, resultsEl, input) {
+  if (!State.map) return;
+  resultsEl.innerHTML = `<div class="search-loading">🔍 กำลังค้นหา...</div>`;
+  resultsEl.classList.remove("hidden");
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`;
+    const res = await fetch(url, { headers: { "Accept-Language": "th,en" } });
+    const data = await res.json();
+
+    if (!data.length) {
+      resultsEl.innerHTML = `<div class="search-empty">ไม่พบสถานที่ "${q}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = data.map((item, i) => {
+      const name = item.display_name.split(",").slice(0, 3).join(", ");
+      return `<div class="search-result-item" data-idx="${i}" data-lat="${item.lat}" data-lng="${item.lon}" title="${item.display_name}">${name}</div>`;
+    }).join("");
+
+    resultsEl.querySelectorAll(".search-result-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        const lat = parseFloat(el.dataset.lat);
+        const lng = parseFloat(el.dataset.lng);
+        panToSearchResult(lat, lng, el.title);
+        input.value = el.title.split(",").slice(0, 2).join(", ");
+        resultsEl.classList.add("hidden");
+      });
+    });
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="search-empty">เกิดข้อผิดพลาด — ตรวจสอบ internet</div>`;
+    console.error("[geocode]", err);
+  }
+}
+
+function panToSearchResult(lat, lng, label) {
+  if (!State.map) return;
+  // ลบ marker เดิม
+  if (State.searchMarker) State.map.removeLayer(State.searchMarker);
+
+  const icon = L.divIcon({
+    className: "search-marker-container",
+    html: `<div class="search-marker-pin">🔍</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -36],
+  });
+
+  State.searchMarker = L.marker([lat, lng], { icon })
+    .addTo(State.map)
+    .bindPopup(`<div class="popup-content"><div class="popup-info"><div class="popup-filename">📍 ${escHtml(label.split(",").slice(0,2).join(","))}</div></div></div>`, { maxWidth: 260, className: "dark-popup" })
+    .openPopup();
+
+  State.map.setView([lat, lng], 15, { animate: true });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C7: RESIZABLE SIDEBAR
+   ───────────────────────────────────────────────────────────── */
+function setupSidebarResizer() {
+  const resizer = document.getElementById("sidebar-resizer");
+  const appContent = document.querySelector(".app-content");
+  if (!resizer || !appContent) return;
+
+  let isResizing = false;
+  let startX = 0;
+  let startSidebarW = 0;
+
+  function getSidebarWidth() {
+    const sidebar = document.querySelector(".sidebar");
+    return sidebar ? sidebar.getBoundingClientRect().width : 320;
+  }
+
+  resizer.addEventListener("mousedown", (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startSidebarW = getSidebarWidth();
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isResizing) return;
+    const delta = startX - e.clientX; // ลาก left = เพิ่มความกว้าง sidebar
+    const newW = Math.min(Math.max(startSidebarW + delta, 220), 600);
+    appContent.style.gridTemplateColumns = `1fr 5px ${newW}px`;
+    State.map?.invalidateSize();
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isResizing) {
+      isResizing = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  });
+
+  // Touch support
+  resizer.addEventListener("touchstart", (e) => {
+    isResizing = true;
+    startX = e.touches[0].clientX;
+    startSidebarW = getSidebarWidth();
+  }, { passive: true });
+
+  document.addEventListener("touchmove", (e) => {
+    if (!isResizing) return;
+    const delta = startX - e.touches[0].clientX;
+    const newW = Math.min(Math.max(startSidebarW + delta, 220), 600);
+    appContent.style.gridTemplateColumns = `1fr 5px ${newW}px`;
+    State.map?.invalidateSize();
+  }, { passive: true });
+
+  document.addEventListener("touchend", () => { isResizing = false; });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C9: MANUAL PIN (ปักหมุดรูปที่ไม่มี GPS)
+   ───────────────────────────────────────────────────────────── */
+function startPinMode(photoId) {
+  State.pinningPhotoId = photoId;
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  // แสดง banner
+  let banner = document.getElementById("pin-mode-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "pin-mode-banner";
+    banner.className = "pin-mode-banner";
+    document.querySelector(".map-section")?.appendChild(banner);
+  }
+  banner.innerHTML = `
+    📍 คลิกบนแผนที่เพื่อปักหมุด <strong>"${escHtml(truncate(photo.file.name, 20))}"</strong>
+    <button id="btn-cancel-pin" class="pin-cancel-btn">ยกเลิก</button>
+  `;
+  banner.classList.remove("hidden");
+
+  document.getElementById("btn-cancel-pin")?.addEventListener("click", cancelPinMode);
+
+  // เปลี่ยน cursor บน map
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "crosshair";
+
+  State.map?.once("click", onMapClickPin);
+}
+
+function onMapClickPin(e) {
+  const photoId = State.pinningPhotoId;
+  if (!photoId) return;
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  photo.gps = { latitude: e.latlng.lat, longitude: e.latlng.lng, altitude: null };
+  photo.hasGPS = true;
+  photo.manualPin = true; // flag สำหรับแสดง icon ต่างกัน
+
+  cancelPinMode();
+  sortAndReindex();
+  refreshMap();
+  initTimeline();
+  renderSidebar();
+  renderHeaderStats();
+
+  showToast(`📍 ปักหมุด "${truncate(photo.file.name, 20)}" สำเร็จ`, "", null, 3000);
+}
+
+function cancelPinMode() {
+  State.pinningPhotoId = null;
+  const banner = document.getElementById("pin-mode-banner");
+  if (banner) banner.classList.add("hidden");
+  const mapEl = document.getElementById("map");
+  if (mapEl) mapEl.style.cursor = "";
+  State.map?.off("click", onMapClickPin);
+}
+
+function makeManualPinIcon(num, selected = false) {
+  return L.divIcon({
+    className: "custom-marker-container",
+    html: `<div class="marker-pin marker-pin-manual${selected ? " selected" : ""}"><span class="marker-number">${num}</span></div>`,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -44],
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   D12: MARKER CLUSTERING (patch refreshMap + buildMarker)
+   ───────────────────────────────────────────────────────────── */
+/** override buildMarker เพื่อรองรับ manual pin icon */
+function buildMarkerWithPin(photo) {
+  const isSelected = State.selectedId === photo.id;
+  const icon = photo.manualPin
+    ? makeManualPinIcon(photo.orderIndex, isSelected)
+    : makeNumberIcon(photo.orderIndex, isSelected);
+
+  const m = L.marker([photo.gps.latitude, photo.gps.longitude], { icon }).on(
+    "click",
+    () => selectPhoto(photo.id),
+  );
+
+  m.bindPopup(buildPopupHTML(photo), {
+    maxWidth: 290,
+    className: "dark-popup",
+  });
+
+  return m;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   D13: SCREENSHOT — MAP ONLY / FULL PAGE
+   ───────────────────────────────────────────────────────────── */
+async function saveFullPageAsImage() {
+  if (!State.map) return;
+  showLoading("กำลังบันทึกภาพทั้งหน้า...");
+  try {
+    if (typeof html2canvas === "undefined") throw new Error("html2canvas ยังไม่โหลด");
+    State.map.closePopup();
+    State.map.stop();
+    await new Promise((r) => setTimeout(r, 200));
+    const appContent = document.getElementById("app-content");
+    const canvas = await html2canvas(appContent, {
+      useCORS: true,
+      allowTaint: true,
+      scale: Math.min(window.devicePixelRatio || 1, 2),
+      backgroundColor: "#1a1a1a",
+      logging: false,
+    });
+    const link = document.createElement("a");
+    link.download = `picturegps-fullpage-${fmtFilenameDate(new Date())}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (err) {
+    console.error("[saveFullPage]", err);
+    alert("ไม่สามารถบันทึกภาพได้ กรุณาใช้ Snipping Tool แทน");
+  } finally {
+    hideLoading();
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   D8: EXPORT PDF REPORT
+   ───────────────────────────────────────────────────────────── */
+async function exportPDF() {
+  if (!State.map) return;
+  if (typeof window.jspdf === "undefined" && typeof window.jsPDF === "undefined") {
+    alert("กำลังโหลด jsPDF... กรุณาลองใหม่อีกครั้ง");
+    return;
+  }
+
+  showLoading("กำลังสร้าง PDF Report...");
+
+  try {
+    const { jsPDF } = window.jspdf || window;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    let y = margin;
+
+    // ── Header ──────────────────────────────────
+    doc.setFillColor(20, 20, 20);
+    doc.rect(0, 0, pageW, 22, "F");
+    doc.setTextColor(229, 9, 20);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("PictureGPS Map Report", margin, 14);
+    doc.setTextColor(180, 180, 180);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`สร้างเมื่อ: ${new Date().toLocaleString("th-TH")}`, pageW - margin, 14, { align: "right" });
+    y = 30;
+
+    // ── Map Screenshot ───────────────────────────
+    if (typeof html2canvas !== "undefined" && State.map) {
+      State.map.closePopup();
+      State.map.stop();
+      await new Promise((r) => setTimeout(r, 200));
+      const mapEl = document.getElementById("map");
+      const canvas = await html2canvas(mapEl, {
+        useCORS: true, allowTaint: true, scale: 1.5,
+        backgroundColor: "#141414", logging: false,
+        onclone: (_d, el) => {
+          const ov = el.querySelector(".leaflet-overlay-pane");
+          if (ov) ov.style.display = "none";
+        },
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.85);
+      const mapW = pageW - margin * 2;
+      const mapH = Math.min((canvas.height / canvas.width) * mapW, 90);
+      doc.addImage(imgData, "JPEG", margin, y, mapW, mapH);
+      y += mapH + 8;
+    }
+
+    // ── Summary ──────────────────────────────────
+    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
+    doc.setFillColor(35, 35, 35);
+    doc.roundedRect(margin, y, pageW - margin * 2, 18, 2, 2, "F");
+    doc.setTextColor(200, 200, 200);
+    doc.setFontSize(9);
+    doc.text(`รูปภาพทั้งหมด: ${State.photos.length}`, margin + 4, y + 6);
+    doc.text(`มีข้อมูล GPS: ${gpsPhotos.length}`, margin + 52, y + 6);
+    if (State.importedTrack) {
+      doc.text(`Track: ${State.importedTrack.name}`, margin + 4, y + 13);
+    }
+    y += 24;
+
+    // ── Table ────────────────────────────────────
+    if (State.photos.length > 0) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(229, 9, 20);
+      doc.text("รายการรูปภาพ", margin, y);
+      y += 6;
+
+      // Table header
+      const cols = [8, 70, 42, 55];
+      const headers = ["#", "ชื่อไฟล์", "วันที่ถ่าย", "พิกัด (lat, lng)"];
+      doc.setFillColor(45, 45, 45);
+      doc.rect(margin, y, pageW - margin * 2, 7, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(200, 200, 200);
+      let cx = margin + 2;
+      headers.forEach((h, i) => { doc.text(h, cx, y + 5); cx += cols[i]; });
+      y += 7;
+
+      doc.setFont("helvetica", "normal");
+      State.photos.forEach((photo, idx) => {
+        if (y > pageH - 20) { doc.addPage(); y = margin; }
+        const bg = idx % 2 === 0 ? [30, 30, 30] : [25, 25, 25];
+        doc.setFillColor(...bg);
+        doc.rect(margin, y, pageW - margin * 2, 7, "F");
+        doc.setTextColor(200, 200, 200);
+        cx = margin + 2;
+        const row = [
+          String(photo.orderIndex),
+          truncate(photo.file.name, 28),
+          photo.dateTime ? fmtDateTime(photo.dateTime).slice(0, 19) : "—",
+          photo.hasGPS ? `${photo.gps.latitude.toFixed(5)}, ${photo.gps.longitude.toFixed(5)}` : "ไม่มี GPS",
+        ];
+        row.forEach((cell, i) => {
+          doc.text(String(cell), cx, y + 5, { maxWidth: cols[i] - 2 });
+          cx += cols[i];
+        });
+        y += 7;
+      });
+    }
+
+    doc.save(`picturegps-report-${fmtFilenameDate(new Date())}.pdf`);
+  } catch (err) {
+    console.error("[exportPDF]", err);
+    alert("ไม่สามารถสร้าง PDF ได้: " + err.message);
+  } finally {
+    hideLoading();
+  }
 }

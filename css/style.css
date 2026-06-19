@@ -1436,3 +1436,340 @@ body {
     color: #fff;
     box-shadow: 0 0 10px rgba(66, 183, 42, 0.25);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   B5: COPY COORDINATES BUTTON (in popup)
+   ───────────────────────────────────────────────────────────── */
+.popup-copy-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #aaa;
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: 4px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.popup-copy-btn:hover {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    border-color: rgba(255,255,255,0.35);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   B10: FILTER / SORT PILLS
+   ───────────────────────────────────────────────────────────── */
+.filter-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 0 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+.filter-pills,
+.sort-pills {
+    display: flex;
+    gap: 4px;
+}
+.filter-pill,
+.sort-pill {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-sub);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.filter-pill:hover,
+.sort-pill:hover {
+    border-color: var(--border-hi);
+    color: var(--text);
+}
+.filter-pill.active,
+.sort-pill.active {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+    font-weight: 600;
+}
+.sort-pills {
+    margin-left: auto;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   B14: TOAST NOTIFICATION
+   ───────────────────────────────────────────────────────────── */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 12px 18px;
+    min-width: 260px;
+    max-width: 420px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    pointer-events: all;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s, transform 0.3s;
+}
+.toast.toast-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+.toast.toast-hide {
+    opacity: 0;
+    transform: translateY(10px);
+}
+.toast-msg {
+    flex: 1;
+    font-size: 13.5px;
+    color: var(--text);
+}
+.toast-undo-btn {
+    background: var(--red-dim);
+    border: 1px solid var(--red);
+    color: var(--red);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.toast-undo-btn:hover {
+    background: var(--red);
+    color: #fff;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C6: SEARCH BOX
+   ───────────────────────────────────────────────────────────── */
+.search-box {
+    position: relative;
+    flex: 1;
+    max-width: 280px;
+}
+.search-input {
+    width: 100%;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 7px 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+.search-input:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px rgba(229,9,20,0.18);
+}
+.search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #1e1e1e;
+    border: 1px solid var(--border-hi);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 1000;
+    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+}
+.search-result-item {
+    padding: 9px 14px;
+    font-size: 13px;
+    color: var(--text-sub);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item:hover {
+    background: rgba(229,9,20,0.1);
+    color: var(--text);
+}
+.search-loading,
+.search-empty {
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Search result marker */
+.search-marker-pin {
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C7: SIDEBAR RESIZER
+   ───────────────────────────────────────────────────────────── */
+.sidebar-resizer {
+    width: 5px;
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    position: relative;
+    z-index: 10;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+    background: var(--red);
+}
+.sidebar-resizer::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -3px;
+    right: -3px;
+    bottom: 0;
+    transform: translateY(-50%);
+    height: 40px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   C9: MANUAL PIN
+   ───────────────────────────────────────────────────────────── */
+.marker-pin-manual {
+    background: linear-gradient(135deg, #e5c900 60%, #f0a500);
+    box-shadow: 0 2px 12px rgba(229,201,0,0.5);
+}
+.marker-pin-manual.selected {
+    background: linear-gradient(135deg, #ffdf00 60%, #ffb300);
+    box-shadow: 0 0 0 3px rgba(255,223,0,0.45), 0 4px 18px rgba(255,200,0,0.6);
+    transform: scale(1.15) translateY(-3px);
+}
+.card-manual-pin-bar {
+    background: linear-gradient(90deg, rgba(229,201,0,0.85), rgba(240,165,0,0.75));
+    color: #222;
+    font-weight: 700;
+}
+.btn-pin-map {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: rgba(229,201,0,0.1);
+    border: 1px solid rgba(229,201,0,0.35);
+    color: #e5c900;
+    border-radius: 6px;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-pin-map:hover {
+    background: rgba(229,201,0,0.2);
+    border-color: #e5c900;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(229,201,0,0.25);
+}
+.pin-mode-banner {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(229,201,0,0.95);
+    color: #111;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    white-space: nowrap;
+}
+.pin-mode-banner.hidden { display: none; }
+.pin-cancel-btn {
+    background: rgba(0,0,0,0.15);
+    border: 1px solid rgba(0,0,0,0.25);
+    color: #111;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+}
+.pin-cancel-btn:hover {
+    background: rgba(0,0,0,0.25);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   D12: MARKER CLUSTER ICONS
+   ───────────────────────────────────────────────────────────── */
+.cluster-icon-container {
+    background: transparent;
+    border: none;
+}
+.cluster-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #E50914 0%, #c0050f 100%);
+    border: 2.5px solid rgba(255,255,255,0.25);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    font-family: var(--font);
+    box-shadow: 0 4px 16px rgba(229,9,20,0.5);
+    transition: transform 0.15s;
+}
+.cluster-icon:hover {
+    transform: scale(1.1);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   D8: Popup row flex for copy button
+   ───────────────────────────────────────────────────────────── */
+.popup-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.popup-row span:nth-child(2) {
+    flex: 1;
+}

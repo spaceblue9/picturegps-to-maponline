@@ -8,11 +8,26 @@
             name="description"
             content="อัปโหลดรูปภาพที่มีข้อมูล GPS แล้วดูตำแหน่งและเส้นทางบนแผนที่"
         />
+        <!-- E11: PWA -->
+        <link rel="manifest" href="manifest.json" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+        <meta name="theme-color" content="#141414" />
 
         <!-- Leaflet CSS -->
         <link
             rel="stylesheet"
             href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            crossorigin=""
+        />
+        <!-- D12: Leaflet MarkerCluster CSS -->
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+            crossorigin=""
+        />
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
             crossorigin=""
         />
 
@@ -154,6 +169,17 @@
                             >
                                 ➕ <span class="btn-label">เพิ่มรูป</span>
                             </button>
+                            <!-- C6: Search Box -->
+                            <div class="search-box" id="search-box">
+                                <input
+                                    type="text"
+                                    id="search-input"
+                                    class="search-input"
+                                    placeholder="🔍 ค้นหาสถานที่..."
+                                    autocomplete="off"
+                                />
+                                <div id="search-results" class="search-results hidden"></div>
+                            </div>
                         </div>
                         <div class="map-toolbar-right">
                             <button
@@ -210,12 +236,35 @@
                             </div>
                             <!-- Hidden file input for GPX/KML import -->
                             <input type="file" id="gpx-kml-input" accept=".gpx,.kml" hidden>
+
+                            <!-- D8: PDF Export -->
                             <button
                                 class="btn btn-secondary btn-sm"
-                                id="btn-save-map"
+                                id="btn-export-pdf"
+                                title="Export PDF Report"
                             >
-                                💾 <span class="btn-label">บันทึกแผนที่</span>
+                                📄 <span class="btn-label">PDF</span>
                             </button>
+
+                            <!-- D13: Save Map Split Button -->
+                            <div class="btn-split-group" id="save-split-group">
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-main"
+                                    id="btn-save-map"
+                                    title="บันทึกแผนที่"
+                                >💾 <span class="btn-label">บันทึก</span></button>
+                                <button
+                                    class="btn btn-secondary btn-sm btn-split-arrow"
+                                    id="btn-save-arrow"
+                                    title="ตัวเลือกบันทึก"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                >▾</button>
+                                <div class="btn-split-menu" id="save-menu" role="menu">
+                                    <button class="split-menu-item" id="save-menu-map">🗺️ เฉพาะแผนที่</button>
+                                    <button class="split-menu-item" id="save-menu-full">📸 ทั้งหน้าจอ</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div id="map"></div>
@@ -260,6 +309,9 @@
                     </div>
                 </div>
 
+                <!-- C7: Sidebar Resizer -->
+                <div id="sidebar-resizer" class="sidebar-resizer" title="ลากเพื่อปรับขนาด"></div>
+
                 <!-- Sidebar -->
                 <aside class="sidebar">
                     <div class="sidebar-header">
@@ -268,6 +320,18 @@
                             <span id="photo-count-badge" class="count-badge"
                                 >0</span
                             >
+                        </div>
+                        <!-- B10: Filter + Sort Pills -->
+                        <div class="filter-sort-row">
+                            <div class="filter-pills">
+                                <button class="filter-pill active" data-filter="all">ทั้งหมด</button>
+                                <button class="filter-pill" data-filter="gps">มี GPS</button>
+                                <button class="filter-pill" data-filter="nogps">ไม่มี GPS</button>
+                            </div>
+                            <div class="sort-pills">
+                                <button class="sort-pill active" data-sort="time">⏱ เวลา</button>
+                                <button class="sort-pill" data-sort="name">🔤 ชื่อ</button>
+                            </div>
                         </div>
                         <div id="route-stats" class="route-stats hidden">
                             <span id="route-distance"></span>
@@ -306,10 +370,18 @@
             </div>
         </div>
 
+        <!-- B14: Toast Container -->
+        <div id="toast-container"></div>
+
         <!-- ===== SCRIPTS ===== -->
         <!-- Leaflet.js -->
         <script
             src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            crossorigin=""
+        ></script>
+        <!-- D12: Leaflet MarkerCluster -->
+        <script
+            src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
             crossorigin=""
         ></script>
         <!-- exifr – อ่าน EXIF/GPS จากรูปภาพ -->
@@ -324,6 +396,8 @@
         ></script>
         <!-- heic2any – แปลง HEIC → JPEG สำหรับ browser ที่ไม่รองรับ -->
         <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+        <!-- D8: jsPDF – Export PDF -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin=""></script>
         <!-- App Logic -->
         <script src="js/app.js"></script>
     </body>

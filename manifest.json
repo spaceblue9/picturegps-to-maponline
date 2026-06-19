@@ -1,0 +1,19 @@
+{
+  "name": "PictureGPS Map",
+  "short_name": "PictureGPS",
+  "description": "อัปโหลดรูปภาพ GPS แสดงตำแหน่งและเส้นทางบนแผนที่",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "lang": "th",
+  "categories": ["utilities", "travel"]
+}

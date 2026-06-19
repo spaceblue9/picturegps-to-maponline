@@ -1702,6 +1702,21 @@ body {
     color: #fff;
     box-shadow: 0 0 10px rgba(229,201,0,0.25);
 }
+
+/* Inline pin button — compact version ใน card-top */
+.card-no-gps-inline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+.btn-pin-inline {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
 .pin-mode-banner {
     position: absolute;
     top: 10px;

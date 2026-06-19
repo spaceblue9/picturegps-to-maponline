@@ -1071,7 +1071,8 @@ function buildPhotoCard(photo) {
   const chevronSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
   // ตรวจสอบ expanded state
-  const hasBody = metaItems.length > 0 || photo.hasGPS;
+  // card-body แสดงเสมอ: รูปมี GPS → แสดง actions / รูปไม่มี GPS → แสดงปุ่มปักหมุด
+  const hasBody = true;
   const isExpanded = State.expandedCards.has(photo.id);
   if (isExpanded) card.classList.add("expanded");
 
@@ -1091,16 +1092,19 @@ function buildPhotoCard(photo) {
         ${
           photo.hasGPS
             ? `<div class="card-gps">${photo.gps.latitude.toFixed(5)}, ${photo.gps.longitude.toFixed(5)}</div>`
-            : '<span class="card-no-gps-tag">⚠️ ไม่มี GPS</span>'
+            : `<div class="card-no-gps-inline">
+                <span class="card-no-gps-tag">⚠️ ไม่มี GPS</span>
+                <button class="btn-pin-map btn-pin-inline" data-pin="${photo.id}">📍 ปักหมุด</button>
+               </div>`
         }
       </div>
       <div class="card-top-actions">
-        ${hasBody ? `<button class="card-toggle" data-toggle="${photo.id}" title="ดูรายละเอียด">${chevronSVG}</button>` : ""}
+        ${metaItems.length > 0 || photo.hasGPS ? `<button class="card-toggle" data-toggle="${photo.id}" title="ดูรายละเอียด">${chevronSVG}</button>` : ""}
         <button class="card-remove-btn" data-remove="${photo.id}" title="ลบรูปนี้">✕</button>
       </div>
     </div>
 
-    ${hasBody ? `
+    ${metaItems.length > 0 || photo.hasGPS ? `
     <div class="card-body">
       ${metaItems.length ? `<div class="card-meta">${metaHTML}</div>` : ""}
       ${
@@ -1114,9 +1118,7 @@ function buildPhotoCard(photo) {
           </a>
         </div>
       `
-          : `<div class="card-actions">
-          <button class="btn-pin-map" data-pin="${photo.id}">📍 ปักหมุดบนแผนที่</button>
-        </div>`
+          : ""
       }
     </div>
     ` : ""}
@@ -1145,11 +1147,13 @@ function buildPhotoCard(photo) {
     focusPhoto(photo.id);
   });
 
-  // C9: manual pin button
-  card.querySelector("[data-pin]")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (State.map) startPinMode(photo.id);
-    else showToast("ต้องโหลดรูปก่อนถึงปักหมุดได้", "", null, 3000);
+  // C9: manual pin button(s) — ทั้ง inline (card-top) และ card-body
+  card.querySelectorAll("[data-pin]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (State.map) startPinMode(photo.id);
+      else showToast("ต้องโหลดรูปก่อนถึงปักหมุดได้", "", null, 3000);
+    });
   });
 
   card.addEventListener("click", () => {

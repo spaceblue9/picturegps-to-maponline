@@ -48,3 +48,12 @@ picturegps-to-maponline/
 - บันทึกแผนที่ด้วย html2canvas อาจมี tile ขาดหายได้หากบราวเซอร์บล็อก CORS (แนะนำ Snipping Tool แทน)
 - HEIC/HEIF อาจต้องการ exifr full bundle และบราวเซอร์บางตัวไม่รองรับ preview thumbnail
 - เปิดไฟล์ index.html ตรง (file://) ได้ แต่บางฟีเจอร์อาจถูก block → แนะนำใช้ local server หรือ deploy ขึ้น host
+
+## Mobile Layout (T-008)
+- **Portrait (≤ 700px)**: toolbar แถวเดียว icon-only, search box ซ่อน → ปุ่ม 🔍 เปิด Mobile Search Overlay แทน
+- **Landscape (height ≤ 520px + orientation:landscape)**: กลับเป็น side-by-side layout, sidebar 240px, header 44px
+- **orientationchange**: invalidateSize() + fitMapToMarkers() delay 300ms
+- **viewport-fit=cover**: รองรับ iPhone notch, safe-area-inset ใน CSS @supports
+- **split button**: ซ่อน dropdown arrow (`btn-split-arrow`) บน mobile, btn-split-main กลับเป็น rounded
+- **sidebar-resizer**: ซ่อนใน portrait, แสดงใน landscape
+- **Upload zone**: overflow-y: auto + landscape align: flex-start เพื่อ scroll ได้

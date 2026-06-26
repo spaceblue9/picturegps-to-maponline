@@ -2,7 +2,7 @@
 <html lang="th">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
         <title>PictureGPS Map – แสดงเส้นทางรูปภาพบนแผนที่</title>
         <meta
             name="description"
@@ -169,7 +169,7 @@
                             >
                                 ➕ <span class="btn-label">เพิ่มรูป</span>
                             </button>
-                            <!-- C6: Search Box -->
+                            <!-- C6: Search Box (desktop) -->
                             <div class="search-box" id="search-box">
                                 <input
                                     type="text"
@@ -180,6 +180,10 @@
                                 />
                                 <div id="search-results" class="search-results hidden"></div>
                             </div>
+                            <!-- Mobile Search Toggle (เฉพาะ mobile) -->
+                            <button class="btn btn-secondary btn-sm mobile-search-btn" id="btn-mobile-search" title="ค้นหาสถานที่">
+                                🔍
+                            </button>
                         </div>
                         <div class="map-toolbar-right">
                             <button
@@ -237,14 +241,7 @@
                             <!-- Hidden file input for GPX/KML import -->
                             <input type="file" id="gpx-kml-input" accept=".gpx,.kml" hidden>
 
-                            <!-- D8: PDF Export -->
-                            <button
-                                class="btn btn-secondary btn-sm"
-                                id="btn-export-pdf"
-                                title="Export PDF Report"
-                            >
-                                📄 <span class="btn-label">PDF</span>
-                            </button>
+
 
                             <!-- D13: Save Map Split Button -->
                             <div class="btn-split-group" id="save-split-group">
@@ -317,9 +314,21 @@
                     <div class="sidebar-header">
                         <div class="sidebar-title-row">
                             <h3 class="sidebar-title">📸 รายการรูปภาพ</h3>
-                            <span id="photo-count-badge" class="count-badge"
-                                >0</span
-                            >
+                            <div class="sidebar-title-actions">
+                                <span id="photo-count-badge" class="count-badge">0</span>
+                                <!-- T-009: Sidebar collapse/expand toggle -->
+                                <button
+                                    id="btn-sidebar-toggle"
+                                    class="btn-sidebar-toggle"
+                                    title="ย่อ/ขยาย รายการ"
+                                    aria-label="ย่อรายการ"
+                                    aria-expanded="true"
+                                >
+                                    <svg class="sidebar-toggle-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <!-- B10: Filter + Sort Pills -->
                         <div class="filter-sort-row">
@@ -362,6 +371,21 @@
             </div>
         </main>
 
+        <!-- Mobile Search Overlay (แสดงเฉพาะ mobile เมื่อกดปุ่มแว่น) -->
+        <div id="mobile-search-overlay" class="mobile-search-overlay hidden">
+            <div class="mobile-search-inner">
+                <input
+                    type="text"
+                    id="mobile-search-input"
+                    class="mobile-search-field"
+                    placeholder="🔍 ค้นหาสถานที่..."
+                    autocomplete="off"
+                />
+                <button id="btn-mobile-search-close" class="mobile-search-close">✕</button>
+            </div>
+            <div id="mobile-search-results" class="search-results hidden"></div>
+        </div>
+
         <!-- Loading Overlay -->
         <div id="loading-overlay" class="loading-overlay hidden">
             <div class="loading-box">
@@ -396,8 +420,7 @@
         ></script>
         <!-- heic2any – แปลง HEIC → JPEG สำหรับ browser ที่ไม่รองรับ -->
         <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-        <!-- D8: jsPDF – Export PDF -->
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin=""></script>
+
         <!-- App Logic -->
         <script src="js/app.js"></script>
     </body>

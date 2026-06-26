@@ -49,6 +49,7 @@ html,
 body {
     height: 100%;
     overflow: hidden;
+    overflow-x: hidden; /* ป้องกัน horizontal scroll บน mobile */
     font-family: var(--font);
     background: var(--bg);
     color: var(--text);
@@ -208,6 +209,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 32px 20px;
+    overflow-y: auto; /* ให้ scroll ได้ใน landscape mobile */
 }
 
 .drop-area {
@@ -273,13 +275,15 @@ body {
     letter-spacing: 0.03em;
 }
 
-/* ─── App Content Layout ─────────────────────────────────── */
+/* ─── App Content Layout ───────────────────────────────── */
 .app-content {
     flex: 1;
     display: flex;
     overflow: hidden;
     min-height: 0;
+    position: relative;
 }
+
 
 /* ─── Map Section ────────────────────────────────────────── */
 .map-section {
@@ -512,6 +516,51 @@ body {
     margin-bottom: 8px;
 }
 
+/* กลุ่ม badge + ปุ่ม toggle ด้านขวา */
+.sidebar-title-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* ─── Sidebar Toggle Button ─────────────────────────── */
+.btn-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-sub);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition);
+    padding: 0;
+}
+.btn-sidebar-toggle:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--border-hi);
+    color: var(--text);
+    box-shadow: 0 0 0 2px var(--red-glow);
+}
+.btn-sidebar-toggle:active {
+    transform: scale(0.9);
+}
+.sidebar-toggle-icon {
+    width: 15px;
+    height: 15px;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* เมื่อ sidebar ถูกซ่อน → หมุนลูกศร  180° */
+.sidebar.collapsed + * .btn-sidebar-toggle .sidebar-toggle-icon,
+.btn-sidebar-toggle.rotated .sidebar-toggle-icon {
+    transform: rotate(180deg);
+}
+
+
 .sidebar-title {
     font-size: 15px;
     font-weight: 700;
@@ -690,8 +739,8 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-bottom: 4px;
     color: var(--text);
+    min-width: 0;
 }
 
 .card-date {
@@ -718,6 +767,139 @@ body {
     border-radius: 4px;
     font-weight: 500;
 }
+
+/* ─── Inline Edit: Name ──────────────────────────────────── */
+.card-filename-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-bottom: 4px;
+}
+
+.card-edit-name-btn,
+.card-edit-gps-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    padding: 1px 3px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.photo-card:hover .card-edit-name-btn,
+.photo-card:hover .card-edit-gps-btn {
+    opacity: 0.45;
+}
+.card-edit-name-btn:hover,
+.card-edit-gps-btn:hover {
+    opacity: 1 !important;
+}
+
+.card-filename-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--red);
+    border-radius: 4px;
+    color: #fff;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 3px 7px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.card-filename-input:focus {
+    border-color: var(--red-hover);
+    box-shadow: 0 0 0 2px var(--red-glow);
+}
+
+/* ─── Inline Edit: GPS ───────────────────────────────────── */
+.card-gps-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.card-gps-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 0 2px;
+}
+
+.gps-edit-row {
+    display: flex;
+    gap: 4px;
+}
+
+.gps-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-hi);
+    border-radius: 4px;
+    color: #fff;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    padding: 5px 7px;
+    width: 100%;
+    min-width: 0;
+    outline: none;
+    transition: border-color 0.2s;
+    /* ซ่อน spin buttons สำหรับ number input */
+    -moz-appearance: textfield;
+}
+.gps-input::-webkit-inner-spin-button,
+.gps-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.gps-input:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px var(--red-glow);
+}
+.gps-input::placeholder {
+    color: var(--text-muted);
+    font-family: var(--font);
+}
+
+.gps-edit-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.gps-save-btn,
+.gps-cancel-btn,
+.gps-pin-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-sub);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+.gps-save-btn:hover {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #4caf50;
+    color: #4caf50;
+}
+.gps-cancel-btn:hover {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+}
+.gps-pin-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--border-hi);
+    color: var(--text);
+}
+
 
 .card-remove-btn {
     flex-shrink: 0;
@@ -933,73 +1115,161 @@ body {
     }
 }
 
+/* ══════════════════════════════════════════════════════════
+   MOBILE / SMALL SCREEN  (≤ 700px)
+   Layout: sidebar อยู่ขวาตลอด (เหมือน desktop) แต่แคบลง
+   toolbar แถวเดียว icon-only
+══════════════════════════════════════════════════════════ */
 @media (max-width: 700px) {
+    /* ── App shell: คงเป็น row เหมือน desktop ── */
     .app-content {
-        flex-direction: column;
+        flex-direction: row;
     }
 
+    /* ── Map: flex:1 ขยายเต็มส่วนที่เหลือ ── */
     .map-section {
-        height: 46vh;
+        flex: 1;
+        height: auto;
+        min-height: 0;
+        min-width: 0;
+    }
+
+    /* ── Sidebar: แคบลงบน mobile ── */
+    .sidebar {
+        width: 200px;
+        flex-shrink: 0;
+        min-height: 0;
+        border-left: 1px solid var(--border);
+        border-top: none;
+    }
+
+    /* ── sidebar-resizer: ซ่อนบน mobile ── */
+    .sidebar-resizer {
+        display: none;
+    }
+
+    /* ── Toolbar: แถวเดียว compact ── */
+    .map-toolbar {
+        flex-wrap: nowrap;
+        gap: 5px;
+        padding: 6px 8px;
+        align-items: center;
+        overflow: visible;
+    }
+    .map-toolbar-left {
+        gap: 5px;
         flex-shrink: 0;
     }
-
-    .sidebar {
-        width: 100%;
-        flex: 1;
-        border-left: none;
-        border-top: 1px solid var(--border);
-    }
-
-    .header-stats {
-        display: none;
-    }
-
-    .drop-area {
-        padding: 36px 22px;
-    }
-    .drop-title {
-        font-size: 21px;
-    }
-    .drop-icon {
-        width: 54px;
-        height: 54px;
-    }
-
-    .card-meta {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* ─── Toolbar: icon-only on very small screens ───────────────── */
-@media (max-width: 540px) {
-    .map-toolbar {
-        gap: 5px;
-        padding: 7px 8px;
-    }
     .map-toolbar-right {
-        gap: 5px;
+        gap: 4px;
+        flex-wrap: nowrap;
+        flex: 1;
+        justify-content: flex-end;
+        min-width: 0;
     }
-    /* Hide button text labels, keep emoji icons */
-    .map-toolbar-right .btn-sm .btn-label {
+
+    /* ── ซ่อน search box บน mobile ── */
+    .search-box {
         display: none;
     }
-    .map-toolbar-left .btn-sm .btn-label {
+
+    /* ── ซ่อน toolbar separator ── */
+    .toolbar-sep {
+        display: none;
+    }
+
+    /* ── btn-sm เป็น icon-only ── */
+    .btn-sm .btn-label {
         display: none;
     }
     .btn-sm {
         padding: 6px 9px;
-        font-size: 13px;
+        font-size: 14px;
         gap: 0;
     }
-}
 
-@media (max-width: 420px) {
-    .btn-sm {
-        padding: 5px 8px;
-        font-size: 13px;
+    /* ── Split buttons: ซ่อน dropdown arrow บน mobile ── */
+    .btn-split-arrow {
+        display: none;
+    }
+    .btn-split-main {
+        border-radius: var(--radius) !important;
+        border-right: 1px solid var(--border) !important;
+    }
+
+    /* ── Header ── */
+    .header-stats {
+        display: none;
     }
     .logo-text {
         font-size: 17px;
+    }
+
+    /* ── Upload zone ── */
+    .drop-area {
+        padding: 30px 18px;
+    }
+    .drop-title {
+        font-size: 20px;
+    }
+    .drop-icon {
+        width: 52px;
+        height: 52px;
+    }
+    /* landscape: ให้ upload zone scroll ได้ */
+    @media (orientation: landscape) {
+        .upload-zone {
+            align-items: flex-start;
+            padding-top: 16px;
+            padding-bottom: 16px;
+        }
+    }
+
+    /* ── Metadata grid ── */
+    .card-meta {
+        grid-template-columns: 1fr;
+    }
+
+    /* ── Toast ── */
+    .toast {
+        min-width: 200px;
+        max-width: calc(100vw - 32px);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   VERY SMALL SCREENS  (≤ 480px) — sidebar แคบมาก
+   ให้ sidebar collapse อัตโนมัติ hint ผ่าน CSS
+══════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+    .sidebar {
+        width: 170px;
+    }
+    /* card compact: ซ่อน thumbnail ออกเพื่อประหยัดพื้นที่ */
+    .card-thumb-wrap {
+        display: none;
+    }
+    .card-body {
+        padding: 8px 10px;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════
+   VERY SMALL SCREENS  (≤ 380px)
+══════════════════════════════════════════════════════════ */
+@media (max-width: 380px) {
+    .btn-sm {
+        padding: 5px 7px;
+        font-size: 13px;
+    }
+    .logo-text {
+        font-size: 15px;
+    }
+    .header-inner {
+        padding: 0 12px;
+    }
+    .sidebar {
+        width: 150px;
     }
 }
 
@@ -1150,8 +1420,12 @@ body {
         height: 36px;
     }
     .timeline-bar {
-        padding: 6px 10px;
-        gap: 7px;
+        padding: 5px 8px;
+        gap: 6px;
+    }
+    .tl-counter {
+        min-width: 30px;
+        font-size: 11px;
     }
 }
 
@@ -1635,6 +1909,97 @@ body {
     font-size: 22px;
     line-height: 1;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE SEARCH BUTTON & OVERLAY
+   ปุ่มค้นหาบน mobile + panel ที่เปิดขึ้นมา
+   ───────────────────────────────────────────────────────────── */
+
+/* ปุ่มแว่นขยาย mobile — ซ่อนบน desktop */
+.mobile-search-btn {
+    display: none;
+}
+@media (max-width: 700px) {
+    .mobile-search-btn {
+        display: inline-flex;
+    }
+}
+
+/* Mobile Search Overlay panel */
+.mobile-search-overlay {
+    position: fixed;
+    top: var(--header-h);
+    left: 0;
+    right: 0;
+    z-index: 1500;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    animation: mobileSearchSlideIn 0.2s ease;
+}
+@keyframes mobileSearchSlideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.mobile-search-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mobile-search-field {
+    flex: 1;
+    background: rgba(255,255,255,0.09);
+    border: 1px solid var(--border-hi);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    padding: 9px 14px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mobile-search-field::placeholder {
+    color: var(--text-muted);
+}
+.mobile-search-field:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px rgba(229,9,20,0.18);
+}
+
+.mobile-search-close {
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--border);
+    color: var(--text-sub);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all var(--transition);
+    line-height: 1;
+}
+.mobile-search-close:hover {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+}
+
+/* iPhone safe-area inset */
+@supports (padding: env(safe-area-inset-bottom)) {
+    .app-content {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .header {
+        padding-top: env(safe-area-inset-top);
+        height: calc(var(--header-h) + env(safe-area-inset-top));
+    }
+    .main {
+        padding-top: calc(var(--header-h) + env(safe-area-inset-top));
+    }
 }
 
 /* ─────────────────────────────────────────────────────────────

@@ -171,8 +171,7 @@ function setupEventListeners() {
     });
   }
 
-  // D8: Export PDF
-  document.getElementById("btn-export-pdf")?.addEventListener("click", exportPDF);
+
 
   DOM.btnFitBounds.addEventListener("click", fitMapToMarkers);
   $("btn-layer-toggle").addEventListener("click", toggleLayer);
@@ -205,6 +204,9 @@ function setupEventListeners() {
 
   // C7: Resizable sidebar
   setupSidebarResizer();
+
+  // T-009: Sidebar collapse/expand toggle
+  setupSidebarToggle();
 
   // A1: Drag-and-drop บน drop area — ใช้ drag-over ทั่วไป
   const da = DOM.dropArea;
@@ -241,13 +243,24 @@ function setupEventListeners() {
     if (saveMenu) saveMenu.classList.remove("open");
   });
 
-  // resize window → แจ้ง Leaflet ปรับขนาด
+  // resize window → แจ้ง Leaflet ปรับขนาด (desktop + orientation change)
   let resizeTimer;
-  window.addEventListener("resize", () => {
+  function onResizeOrRotate() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       State.map?.invalidateSize();
     }, 150);
+  }
+  window.addEventListener("resize", onResizeOrRotate);
+
+  // Orientation change บน mobile — รอนานขึ้น (300ms) ให้ browser
+  // เสร็จ layout ก่อน Leaflet อ่านขนาด container ใหม่
+  window.addEventListener("orientationchange", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      State.map?.invalidateSize();
+      if (State.markers.length) fitMapToMarkers();
+    }, 300);
   });
 }
 
@@ -431,7 +444,13 @@ async function parsePhoto(file) {
     orderIndex: null,
     marker: null,
     hasGPS: gps !== null,
+    displayName: null,  // null = ใช้ file.name, มีค่า = ชื่อที่ user ตั้งเอง
   };
+}
+
+/** ดึงชื่อแสดงผลของรูป: ใช้ displayName ถ้ามี, fallback เป็น file.name */
+function getPhotoName(photo) {
+  return photo.displayName || photo.file.name;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -442,7 +461,7 @@ function sortAndReindex() {
     if (a.dateTime && b.dateTime) return a.dateTime - b.dateTime;
     if (a.dateTime) return -1;
     if (b.dateTime) return 1;
-    return a.file.name.localeCompare(b.file.name);
+    return getPhotoName(a).localeCompare(getPhotoName(b));
   });
   State.photos.forEach((p, i) => {
     p.orderIndex = i + 1;
@@ -614,7 +633,7 @@ function buildPopupHTML(photo) {
         <div class="popup-badge">${photo.orderIndex}</div>
       </div>
       <div class="popup-info">
-        <div class="popup-filename">${escHtml(photo.file.name)}</div>
+        <div class="popup-filename">${escHtml(getPhotoName(photo))}</div>
         <div class="popup-row"><span>📅</span><span>${date}</span></div>
         <div class="popup-row">
           <span>📍</span>
@@ -725,7 +744,7 @@ function removePhoto(photoId) {
     document.querySelectorAll(".toast").forEach((t) => t.remove());
   }
 
-  const shortName = truncate(photo.file.name, 24);
+  const shortName = truncate(getPhotoName(photo), 24);
 
   showToast(
     `ลบ "${shortName}" แล้ว`,
@@ -956,7 +975,7 @@ function renderSidebar() {
   let photos = [...State.photos];
   if (State.filter === "gps")   photos = photos.filter((p) => p.hasGPS);
   if (State.filter === "nogps") photos = photos.filter((p) => !p.hasGPS);
-  if (State.sortBy === "name")  photos.sort((a, b) => a.file.name.localeCompare(b.file.name));
+  if (State.sortBy === "name")  photos.sort((a, b) => getPhotoName(a).localeCompare(getPhotoName(b)));
 
   DOM.photoList.innerHTML = "";
   photos.forEach((p) => DOM.photoList.appendChild(buildPhotoCard(p)));
@@ -1085,16 +1104,23 @@ function buildPhotoCard(photo) {
         ${photo.manualPin ? '<div class="card-no-gps-bar card-manual-pin-bar">📍 Manual</div>' : (!photo.hasGPS ? '<div class="card-no-gps-bar">ไม่มี GPS</div>' : "")}
       </div>
       <div class="card-info">
-        <div class="card-filename" title="${escHtml(photo.file.name)}">
-          ${escHtml(truncate(photo.file.name, 22))}
+        <div class="card-filename-row">
+          <div class="card-filename" title="${escHtml(getPhotoName(photo))}">
+            ${escHtml(truncate(getPhotoName(photo), 22))}
+          </div>
+          <button class="card-edit-name-btn" data-edit-name="${photo.id}" title="แก้ไขชื่อ">✏️</button>
         </div>
         <div class="card-date">📅 ${date}</div>
         ${
           photo.hasGPS
-            ? `<div class="card-gps">${photo.gps.latitude.toFixed(5)}, ${photo.gps.longitude.toFixed(5)}</div>`
+            ? `<div class="card-gps-row">
+                <div class="card-gps">${photo.gps.latitude.toFixed(5)}, ${photo.gps.longitude.toFixed(5)}</div>
+                <button class="card-edit-gps-btn" data-edit-gps="${photo.id}" title="แก้ไขพิกัด">✏️</button>
+               </div>`
             : `<div class="card-no-gps-inline">
                 <span class="card-no-gps-tag">⚠️ ไม่มี GPS</span>
                 <button class="btn-pin-map btn-pin-inline" data-pin="${photo.id}">📍 ปักหมุด</button>
+                <button class="card-edit-gps-btn btn-pin-inline" data-edit-gps="${photo.id}">📝 กรอกพิกัด</button>
                </div>`
         }
       </div>
@@ -1153,6 +1179,20 @@ function buildPhotoCard(photo) {
       e.stopPropagation();
       if (State.map) startPinMode(photo.id);
       else showToast("ต้องโหลดรูปก่อนถึงปักหมุดได้", "", null, 3000);
+    });
+  });
+
+  // Edit name button
+  card.querySelector("[data-edit-name]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    startEditName(photo.id, card);
+  });
+
+  // Edit GPS button
+  card.querySelectorAll("[data-edit-gps]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startEditGPS(photo.id, card);
     });
   });
 
@@ -1216,7 +1256,7 @@ function renderTimelineStep(index) {
   DOM.tlBadge.textContent = photo.orderIndex;
 
   const date = photo.dateTime ? fmtDateTime(photo.dateTime) : "—";
-  DOM.tlInfo.textContent = `${truncate(photo.file.name, 22)}  ·  ${date}`;
+  DOM.tlInfo.textContent = `${truncate(getPhotoName(photo), 22)}  ·  ${date}`;
   DOM.tlCounter.textContent = `${index + 1} / ${gpsPhotos.length}`;
 
   // disable prev/next buttons at boundaries
@@ -1264,7 +1304,7 @@ function exportGPX() {
       const time = p.dateTime
         ? `\n        <time>${p.dateTime.toISOString()}</time>`
         : "";
-      const name = `\n        <name>${escXml(p.orderIndex + " - " + p.file.name)}</name>`;
+      const name = `\n        <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>`;
       return `      <trkpt lat="${p.gps.latitude}" lon="${p.gps.longitude}">${ele}${time}${name}\n      </trkpt>`;
     })
     .join("\n");
@@ -1301,7 +1341,7 @@ function exportKML() {
         ? `\n      <description>${fmtDateTime(p.dateTime)}</description>`
         : "";
       return `    <Placemark>
-      <name>${escXml(p.orderIndex + " - " + p.file.name)}</name>${desc}
+      <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>${desc}
       <Point><coordinates>${p.gps.longitude},${p.gps.latitude},${alt}</coordinates></Point>
     </Placemark>`;
     })
@@ -1907,33 +1947,82 @@ function showToast(msg, undoLabel, onUndo, duration = 4000, onExpire = null) {
 let _searchDebounce = null;
 
 function setupSearch() {
+  // ── Desktop search box ──────────────────────────────────────
   const input = document.getElementById("search-input");
   const results = document.getElementById("search-results");
-  if (!input || !results) return;
+  if (input && results) {
+    input.addEventListener("input", () => {
+      clearTimeout(_searchDebounce);
+      const q = input.value.trim();
+      if (q.length < 2) {
+        results.innerHTML = "";
+        results.classList.add("hidden");
+        return;
+      }
+      _searchDebounce = setTimeout(() => geocodeSearch(q, results, input), 500);
+    });
 
-  input.addEventListener("input", () => {
-    clearTimeout(_searchDebounce);
-    const q = input.value.trim();
+    // ปิด results เมื่อ click outside
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".search-box")) {
+        results.classList.add("hidden");
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        results.classList.add("hidden");
+        input.blur();
+      }
+    });
+  }
+
+  // ── Mobile search overlay ───────────────────────────────────
+  const mobileOverlay  = document.getElementById("mobile-search-overlay");
+  const mobileInput    = document.getElementById("mobile-search-input");
+  const mobileResults  = document.getElementById("mobile-search-results");
+  const btnMobileOpen  = document.getElementById("btn-mobile-search");
+  const btnMobileClose = document.getElementById("btn-mobile-search-close");
+
+  if (!mobileOverlay || !mobileInput || !mobileResults) return;
+
+  // เปิด overlay
+  btnMobileOpen?.addEventListener("click", () => {
+    mobileOverlay.classList.remove("hidden");
+    mobileInput.focus();
+  });
+
+  // ปิด overlay
+  function closeMobileSearch() {
+    mobileOverlay.classList.add("hidden");
+    mobileInput.value = "";
+    mobileResults.innerHTML = "";
+    mobileResults.classList.add("hidden");
+  }
+  btnMobileClose?.addEventListener("click", closeMobileSearch);
+
+  mobileInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMobileSearch();
+  });
+
+  // ค้นหา
+  let _mobileDebounce = null;
+  mobileInput.addEventListener("input", () => {
+    clearTimeout(_mobileDebounce);
+    const q = mobileInput.value.trim();
     if (q.length < 2) {
-      results.innerHTML = "";
-      results.classList.add("hidden");
+      mobileResults.innerHTML = "";
+      mobileResults.classList.add("hidden");
       return;
     }
-    _searchDebounce = setTimeout(() => geocodeSearch(q, results, input), 500);
-  });
-
-  // ปิด results เมื่อ click outside
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".search-box")) {
-      results.classList.add("hidden");
-    }
-  });
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      results.classList.add("hidden");
-      input.blur();
-    }
+    _mobileDebounce = setTimeout(() => {
+      geocodeSearch(q, mobileResults, mobileInput).then(() => {
+        // ผูก event สำหรับ mobile: ปิด overlay หลัง click result
+        mobileResults.querySelectorAll(".search-result-item").forEach((el) => {
+          el.addEventListener("click", closeMobileSearch, { once: true });
+        });
+      });
+    }, 500);
   });
 }
 
@@ -2053,6 +2142,186 @@ function setupSidebarResizer() {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   T-009: SIDEBAR COLLAPSE / EXPAND TOGGLE
+   ───────────────────────────────────────────────────────────── */
+function setupSidebarToggle() {
+  const sidebar   = document.querySelector(".sidebar");
+  const resizer   = document.getElementById("sidebar-resizer");
+  const toggleBtn = document.getElementById("btn-sidebar-toggle");
+
+  if (!sidebar || !toggleBtn) return;
+
+  let isCollapsed = false;
+
+  /** ย่อ sidebar */
+  function collapseSidebar() {
+    isCollapsed = true;
+    sidebar.classList.add("collapsed");
+    toggleBtn.classList.add("rotated");
+    toggleBtn.setAttribute("aria-expanded", "false");
+    toggleBtn.setAttribute("aria-label", "เปิดรายการ");
+    toggleBtn.title = "เปิดรายการรูปภาพ";
+    if (resizer) resizer.style.display = "none";
+
+    // แจ้ง Leaflet หลัง transition เสร็จ
+    sidebar.addEventListener("transitionend", () => {
+      if (isCollapsed) State.map?.invalidateSize();
+    }, { once: true });
+  }
+
+  /** ขยาย sidebar คืน */
+  function expandSidebar() {
+    isCollapsed = false;
+    sidebar.classList.remove("collapsed");
+    toggleBtn.classList.remove("rotated");
+    toggleBtn.setAttribute("aria-expanded", "true");
+    toggleBtn.setAttribute("aria-label", "ย่อรายการ");
+    toggleBtn.title = "ย่อรายการรูปภาพ";
+    if (resizer) resizer.style.display = "";
+
+    // แจ้ง Leaflet หลัง transition เสร็จ
+    sidebar.addEventListener("transitionend", () => {
+      if (!isCollapsed) State.map?.invalidateSize();
+    }, { once: true });
+  }
+
+  // ปุ่มใน header
+  toggleBtn.addEventListener("click", () => {
+    if (isCollapsed) expandSidebar();
+    else collapseSidebar();
+  });
+
+  // Keyboard shortcut: ] ย่อ/ขยาย sidebar
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "]" && !e.target.closest("input, textarea")) {
+      if (isCollapsed) expandSidebar();
+      else collapseSidebar();
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   INLINE EDIT: ชื่อรูปภาพ + พิกัด GPS
+   ───────────────────────────────────────────────────────────── */
+
+function startEditName(photoId, card) {
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  const nameEl = card.querySelector(".card-filename");
+  const editBtn = card.querySelector("[data-edit-name]");
+  if (!nameEl) return;
+
+  const currentName = getPhotoName(photo);
+
+  // สร้าง input แทนที่ชื่อ
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "card-filename-input";
+  input.value = currentName;
+  input.maxLength = 100;
+
+  nameEl.replaceWith(input);
+  if (editBtn) editBtn.style.display = "none";
+  input.focus();
+  input.select();
+
+  let saved = false;
+  const save = () => {
+    if (saved) return;
+    saved = true;
+    const newName = input.value.trim();
+    if (newName && newName !== photo.file.name) {
+      photo.displayName = newName;
+    } else {
+      photo.displayName = null; // กลับไปใช้ชื่อเดิม
+    }
+    // re-render ทุกส่วนที่แสดงชื่อ
+    renderSidebar();
+    refreshMap();
+    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
+    if (gpsPhotos.length) renderTimelineStep(State.timelineIndex);
+    showToast(`✅ เปลี่ยนชื่อเป็น "${truncate(getPhotoName(photo), 20)}"`, "", null, 2500);
+  };
+
+  input.addEventListener("blur", save);
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { input.value = currentName; input.blur(); }
+  });
+  input.addEventListener("click", (e) => e.stopPropagation());
+}
+
+function startEditGPS(photoId, card) {
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  // หา element ที่จะแทนที่: card-gps-row (มี GPS) หรือ card-no-gps-inline (ไม่มี GPS)
+  const targetEl = card.querySelector(".card-gps-row") || card.querySelector(".card-no-gps-inline");
+  if (!targetEl) return;
+
+  // สร้าง inline form
+  const wrapper = document.createElement("div");
+  wrapper.className = "card-gps-edit";
+  wrapper.innerHTML = `
+    <div class="gps-edit-row">
+      <input type="number" step="any" class="gps-input" placeholder="Latitude"
+             value="${photo.gps?.latitude ?? ''}">
+      <input type="number" step="any" class="gps-input" placeholder="Longitude"
+             value="${photo.gps?.longitude ?? ''}">
+    </div>
+    <div class="gps-edit-actions">
+      <button class="gps-save-btn" title="บันทึก">✓ บันทึก</button>
+      <button class="gps-cancel-btn" title="ยกเลิก">✕</button>
+      <button class="gps-pin-btn" title="คลิกเลือกจากแผนที่">📍 เลือกจากแผนที่</button>
+    </div>
+  `;
+
+  targetEl.replaceWith(wrapper);
+
+  // หยุด click event ไม่ให้ bubble ขึ้นไปที่ card
+  wrapper.addEventListener("click", (e) => e.stopPropagation());
+
+  const inputs = wrapper.querySelectorAll(".gps-input");
+
+  // Save
+  wrapper.querySelector(".gps-save-btn").addEventListener("click", () => {
+    const lat = parseFloat(inputs[0].value);
+    const lng = parseFloat(inputs[1].value);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      photo.gps = { latitude: lat, longitude: lng, altitude: photo.gps?.altitude ?? null };
+      photo.hasGPS = true;
+      sortAndReindex();
+      refreshMap();
+      initTimeline();
+      renderSidebar();
+      renderHeaderStats();
+      showToast(`✅ อัปเดตพิกัดสำเร็จ`, "", null, 3000);
+    } else {
+      showToast("⚠️ พิกัดไม่ถูกต้อง (lat: -90~90, lng: -180~180)", "", null, 3000);
+    }
+  });
+
+  // Cancel
+  wrapper.querySelector(".gps-cancel-btn").addEventListener("click", () => {
+    renderSidebar(); // re-render กลับเป็น card เดิม
+  });
+
+  // Pin from map
+  wrapper.querySelector(".gps-pin-btn").addEventListener("click", () => {
+    if (State.map) {
+      startPinMode(photoId);
+    } else {
+      showToast("ต้องโหลดรูปก่อนถึงเลือกจากแผนที่ได้", "", null, 3000);
+    }
+  });
+
+  // Focus first input
+  inputs[0].focus();
+}
+
+/* ─────────────────────────────────────────────────────────────
    C9: MANUAL PIN (ปักหมุดรูปที่ไม่มี GPS)
    ───────────────────────────────────────────────────────────── */
 function startPinMode(photoId) {
@@ -2069,7 +2338,7 @@ function startPinMode(photoId) {
     document.querySelector(".map-section")?.appendChild(banner);
   }
   banner.innerHTML = `
-    📍 คลิกบนแผนที่เพื่อปักหมุด <strong>"${escHtml(truncate(photo.file.name, 20))}"</strong>
+    📍 คลิกบนแผนที่เพื่อปักหมุด <strong>"${escHtml(truncate(getPhotoName(photo), 20))}"</strong>
     <button id="btn-cancel-pin" class="pin-cancel-btn">ยกเลิก</button>
   `;
   banner.classList.remove("hidden");
@@ -2100,7 +2369,7 @@ function onMapClickPin(e) {
   renderSidebar();
   renderHeaderStats();
 
-  showToast(`📍 ปักหมุด "${truncate(photo.file.name, 20)}" สำเร็จ`, "", null, 3000);
+  showToast(`📍 ปักหมุด "${truncate(getPhotoName(photo), 20)}" สำเร็จ`, "", null, 3000);
 }
 
 function cancelPinMode() {
@@ -2176,120 +2445,3 @@ async function saveFullPageAsImage() {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────
-   D8: EXPORT PDF REPORT
-   ───────────────────────────────────────────────────────────── */
-async function exportPDF() {
-  if (!State.map) return;
-  if (typeof window.jspdf === "undefined" && typeof window.jsPDF === "undefined") {
-    alert("กำลังโหลด jsPDF... กรุณาลองใหม่อีกครั้ง");
-    return;
-  }
-
-  showLoading("กำลังสร้าง PDF Report...");
-
-  try {
-    const { jsPDF } = window.jspdf || window;
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 14;
-    let y = margin;
-
-    // ── Header ──────────────────────────────────
-    doc.setFillColor(20, 20, 20);
-    doc.rect(0, 0, pageW, 22, "F");
-    doc.setTextColor(229, 9, 20);
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("PictureGPS Map Report", margin, 14);
-    doc.setTextColor(180, 180, 180);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(`สร้างเมื่อ: ${new Date().toLocaleString("th-TH")}`, pageW - margin, 14, { align: "right" });
-    y = 30;
-
-    // ── Map Screenshot ───────────────────────────
-    if (typeof html2canvas !== "undefined" && State.map) {
-      State.map.closePopup();
-      State.map.stop();
-      await new Promise((r) => setTimeout(r, 200));
-      const mapEl = document.getElementById("map");
-      const canvas = await html2canvas(mapEl, {
-        useCORS: true, allowTaint: true, scale: 1.5,
-        backgroundColor: "#141414", logging: false,
-        onclone: (_d, el) => {
-          const ov = el.querySelector(".leaflet-overlay-pane");
-          if (ov) ov.style.display = "none";
-        },
-      });
-      const imgData = canvas.toDataURL("image/jpeg", 0.85);
-      const mapW = pageW - margin * 2;
-      const mapH = Math.min((canvas.height / canvas.width) * mapW, 90);
-      doc.addImage(imgData, "JPEG", margin, y, mapW, mapH);
-      y += mapH + 8;
-    }
-
-    // ── Summary ──────────────────────────────────
-    const gpsPhotos = State.photos.filter((p) => p.hasGPS);
-    doc.setFillColor(35, 35, 35);
-    doc.roundedRect(margin, y, pageW - margin * 2, 18, 2, 2, "F");
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(9);
-    doc.text(`รูปภาพทั้งหมด: ${State.photos.length}`, margin + 4, y + 6);
-    doc.text(`มีข้อมูล GPS: ${gpsPhotos.length}`, margin + 52, y + 6);
-    if (State.importedTrack) {
-      doc.text(`Track: ${State.importedTrack.name}`, margin + 4, y + 13);
-    }
-    y += 24;
-
-    // ── Table ────────────────────────────────────
-    if (State.photos.length > 0) {
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(229, 9, 20);
-      doc.text("รายการรูปภาพ", margin, y);
-      y += 6;
-
-      // Table header
-      const cols = [8, 70, 42, 55];
-      const headers = ["#", "ชื่อไฟล์", "วันที่ถ่าย", "พิกัด (lat, lng)"];
-      doc.setFillColor(45, 45, 45);
-      doc.rect(margin, y, pageW - margin * 2, 7, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(200, 200, 200);
-      let cx = margin + 2;
-      headers.forEach((h, i) => { doc.text(h, cx, y + 5); cx += cols[i]; });
-      y += 7;
-
-      doc.setFont("helvetica", "normal");
-      State.photos.forEach((photo, idx) => {
-        if (y > pageH - 20) { doc.addPage(); y = margin; }
-        const bg = idx % 2 === 0 ? [30, 30, 30] : [25, 25, 25];
-        doc.setFillColor(...bg);
-        doc.rect(margin, y, pageW - margin * 2, 7, "F");
-        doc.setTextColor(200, 200, 200);
-        cx = margin + 2;
-        const row = [
-          String(photo.orderIndex),
-          truncate(photo.file.name, 28),
-          photo.dateTime ? fmtDateTime(photo.dateTime).slice(0, 19) : "—",
-          photo.hasGPS ? `${photo.gps.latitude.toFixed(5)}, ${photo.gps.longitude.toFixed(5)}` : "ไม่มี GPS",
-        ];
-        row.forEach((cell, i) => {
-          doc.text(String(cell), cx, y + 5, { maxWidth: cols[i] - 2 });
-          cx += cols[i];
-        });
-        y += 7;
-      });
-    }
-
-    doc.save(`picturegps-report-${fmtFilenameDate(new Date())}.pdf`);
-  } catch (err) {
-    console.error("[exportPDF]", err);
-    alert("ไม่สามารถสร้าง PDF ได้: " + err.message);
-  } finally {
-    hideLoading();
-  }
-}

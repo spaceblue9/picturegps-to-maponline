@@ -62,3 +62,27 @@
   - 📥 Export GPX: สร้างไฟล์ GPX 1.1 พร้อม trkpt (lat/lon/ele/time/name) ดาวน์โหลดได้ทันที
   - 📥 Export KML: สร้างไฟล์ KML 2.2 พร้อม Placemark + LineString เส้นทาง เปิดได้ใน Google Earth
   - 🏔️ Terrain Basemap: เพิ่ม OpenTopoMap ใน layer cycle (ถนน → ดาวเทียม → ภูมิประเทศ → วน)
+
+### T-008 Mobile Responsive Overhaul (iPhone 13 layout) — Revised
+- Status: `Done`
+- Detail:
+  - 📱 Sidebar อยู่ด้านขวาตลอด (row layout) เหมือน desktop — ไม่ย้ายลงด้านล่าง
+  - 📐 Sidebar width: 200px (≤700px), 170px (≤480px), 150px (≤380px)
+  - 🃏 card thumbnail: ซ่อนที่ ≤480px เพื่อประหยัดพื้นที่
+  - 🔍 Mobile Search Button 🔍: แสดงบน ≤700px แทน search box
+  - 📱 Mobile Search Overlay: panel เต็มเอนค้นหา Nominatim
+  - ↺ orientationchange: invalidateSize() + fitMapToMarkers() delay 300ms
+  - 🌏 viewport-fit=cover: iPhone notch / safe-area support
+  - 🔶 CSS safe-area-inset: padding อัตโนมัติสำหรับมือถือที่มี notch
+  - 🗂️ Toolbar: แถวเดียว icon-only บน ≤700px
+  - 📱 Upload zone: overflow-y: auto + landscape align: flex-start
+
+### T-009 Sidebar Collapse/Expand Toggle
+- Status: `Done`
+- Detail:
+  - ปุ่ม `◀` (chevron) ใน sidebar header ด้านขวาถัดจาก badge
+  - กด 1 ครั้ง → sidebar ซ่อนพร้อม animation (width→0 + opacity fade, 280ms)
+  - แผนที่ขยายเต็มพื้นที่โดยอัตโนมัติ (Leaflet `invalidateSize()` หลัง transition)
+  - Floating tab 📸 โผล่ติดขอบขวา → กดคืน sidebar
+  - keyboard shortcut: `]` ย่อ/ขยาย sidebar
+  - sidebar-resizer ซ่อนอัตโนมัติตอน collapsed

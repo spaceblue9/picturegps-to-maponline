@@ -450,7 +450,7 @@ async function parsePhoto(file) {
 
 /** ดึงชื่อแสดงผลของรูป: ใช้ displayName ถ้ามี, fallback เป็น file.name */
 function getPhotoName(photo) {
-  return photo.displayName || photo.file.name;
+  return photo.displayName || (photo.file ? photo.file.name : null) || photo.originalName || "Unknown";
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -1307,21 +1307,35 @@ function moveTimeline(delta) {
 
 function exportGPX() {
   const pts = State.photos.filter((p) => p.hasGPS);
-  if (!pts.length) return;
+  const importedTrackPts = (State.importedTrack ? State.importedTrack.points : null) || [];
 
-  const trkpts = pts
-    .map((p) => {
-      const ele =
-        p.gps.altitude != null
-          ? `\n        <ele>${p.gps.altitude.toFixed(1)}</ele>`
-          : "";
-      const time = p.dateTime
-        ? `\n        <time>${p.dateTime.toISOString()}</time>`
-        : "";
+  if (!pts.length && !importedTrackPts.length) return;
+
+  let waypoints = "";
+  if (importedTrackPts.length > 0) {
+    waypoints = pts.map((p) => {
+      const ele = p.gps.altitude != null ? `\n    <ele>${p.gps.altitude.toFixed(1)}</ele>` : "";
+      const time = p.dateTime ? `\n    <time>${p.dateTime.toISOString()}</time>` : "";
+      const name = `\n    <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>`;
+      return `  <wpt lat="${p.gps.latitude}" lon="${p.gps.longitude}">${ele}${time}${name}\n  </wpt>`;
+    }).join("\n");
+  }
+
+  let trkpts = "";
+  if (importedTrackPts.length > 0) {
+    trkpts = importedTrackPts.map((pt) => {
+      const ele = pt.ele != null ? `\n        <ele>${pt.ele.toFixed(1)}</ele>` : "";
+      const time = pt.time ? `\n        <time>${pt.time.toISOString()}</time>` : "";
+      return `      <trkpt lat="${pt.lat}" lon="${pt.lng}">${ele}${time}\n      </trkpt>`;
+    }).join("\n");
+  } else if (pts.length > 0) {
+    trkpts = pts.map((p) => {
+      const ele = p.gps.altitude != null ? `\n        <ele>${p.gps.altitude.toFixed(1)}</ele>` : "";
+      const time = p.dateTime ? `\n        <time>${p.dateTime.toISOString()}</time>` : "";
       const name = `\n        <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>`;
       return `      <trkpt lat="${p.gps.latitude}" lon="${p.gps.longitude}">${ele}${time}${name}\n      </trkpt>`;
-    })
-    .join("\n");
+    }).join("\n");
+  }
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="PictureGPS Map" xmlns="http://www.topografix.com/GPX/1/1">
@@ -1329,7 +1343,7 @@ function exportGPX() {
     <name>PictureGPS Route</name>
     <time>${new Date().toISOString()}</time>
   </metadata>
-  <trk>
+${waypoints ? waypoints + "\n" : ""}  <trk>
     <name>PictureGPS Route</name>
     <trkseg>
 ${trkpts}
@@ -1346,7 +1360,9 @@ ${trkpts}
 
 function exportKML() {
   const pts = State.photos.filter((p) => p.hasGPS);
-  if (!pts.length) return;
+  const importedTrackPts = (State.importedTrack ? State.importedTrack.points : null) || [];
+
+  if (!pts.length && !importedTrackPts.length) return;
 
   const placemarks = pts
     .map((p) => {
@@ -1354,29 +1370,26 @@ function exportKML() {
       const desc = p.dateTime
         ? `\n      <description>${fmtDateTime(p.dateTime)}</description>`
         : "";
+      const timeStamp = p.dateTime 
+        ? `\n      <TimeStamp><when>${p.dateTime.toISOString()}</when></TimeStamp>`
+        : "";
       return `    <Placemark>
-      <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>${desc}
+      <name>${escXml(p.orderIndex + " - " + getPhotoName(p))}</name>${desc}${timeStamp}
       <Point><coordinates>${p.gps.longitude},${p.gps.latitude},${alt}</coordinates></Point>
     </Placemark>`;
     })
     .join("\n");
 
-  const lineCoords = pts
-    .map((p) => {
-      const alt = p.gps.altitude != null ? p.gps.altitude.toFixed(1) : "0";
-      return `          ${p.gps.longitude},${p.gps.latitude},${alt}`;
-    })
-    .join("\n");
+  const lineSource = importedTrackPts.length > 0 
+      ? importedTrackPts.map(pt => ({ lng: pt.lng, lat: pt.lat, alt: pt.ele || 0 }))
+      : [];
 
-  const content = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>PictureGPS Route</name>
-    <Style id="route">
-      <LineStyle><color>ff1409E5</color><width>3</width></LineStyle>
-    </Style>
-${placemarks}
-    <Placemark>
+  let linePlacemark = "";
+  if (lineSource.length > 0) {
+    const lineCoords = lineSource
+      .map((pt) => `          ${pt.lng},${pt.lat},${pt.alt}`)
+      .join("\n");
+    linePlacemark = `    <Placemark>
       <name>เส้นทาง</name>
       <styleUrl>#route</styleUrl>
       <LineString>
@@ -1385,7 +1398,17 @@ ${placemarks}
 ${lineCoords}
         </coordinates>
       </LineString>
-    </Placemark>
+    </Placemark>`;
+  }
+
+  const content = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>PictureGPS Route</name>
+    <Style id="route">
+      <LineStyle><color>ff1409E5</color><width>3</width></LineStyle>
+    </Style>
+${placemarks ? placemarks + "\n" : ""}${linePlacemark}
   </Document>
 </kml>`;
 
@@ -1581,11 +1604,24 @@ function parseKML(xmlText) {
       const lat = parseFloat(latStr);
       const lng = parseFloat(lonStr);
       if (!isNaN(lat) && !isNaN(lng)) {
+        let time = null;
+        const whenEl = pm.querySelector("TimeStamp > when");
+        if (whenEl) {
+          time = new Date(whenEl.textContent);
+        } else {
+          // Fallback สำหรับไฟล์เก่าที่มีแค่วันที่ใน description
+          const descEl = pm.querySelector("description");
+          if (descEl && descEl.textContent) {
+            const d = new Date(descEl.textContent.trim().replace(/-/g, "/")); // แปลงกลับเผื่อ Safari
+            if (!isNaN(d)) time = d;
+          }
+        }
+        
         points.push({
           lat,
           lng,
           ele: eleStr ? parseFloat(eleStr) : null,
-          time: null,
+          time: time,
           name,
           isWaypoint: true,
         });
@@ -1662,60 +1698,57 @@ async function loadTrackToMap(filename, points) {
     }).addTo(State.map);
   }
 
-  // ── วาง waypoint markers ─────────────────────────────
-  const wpMarkers = [];
-  const wpSrc = waypoints.length > 0 ? waypoints : (trackPts.length === 0 ? [] : [trackPts[0], trackPts[trackPts.length - 1]]);
-  wpSrc.forEach((pt) => {
-    const icon = L.divIcon({
-      className: "track-waypoint-marker",
-      html: `<div class="track-wp-dot"></div>`,
-      iconSize: [10, 10],
-      iconAnchor: [5, 5],
-      popupAnchor: [0, -8],
+  // ── แปลง waypoints เป็น Manual Pins ────────────────────
+  let addedPins = 0;
+  waypoints.forEach((pt) => {
+    State.photos.push({
+      id: "wp-" + Math.random().toString(36).substring(2, 9),
+      file: null,
+      displayUrl: null,
+      hasGPS: true,
+      gps: { latitude: pt.lat, longitude: pt.lng, altitude: pt.ele || null },
+      dateTime: pt.time || null,
+      exif: null,
+      manualPin: true,
+      originalName: pt.name || "Waypoint",
+      orderIndex: 0,
     });
-    const m = L.marker([pt.lat, pt.lng], { icon });
-
-    // สร้าง popup สำหรับทุกจุด (มีชื่อหรือไม่ก็ตาม)
-    const gmapsUrl = `https://www.google.com/maps?q=${pt.lat},${pt.lng}`;
-    const gmapsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${pt.lat},${pt.lng}`;
-
-    const rows = [
-      pt.name ? `<div class="wp-popup-name">${escHtml(pt.name)}</div>` : "",
-      `<div class="wp-popup-row"><span>📍</span><span>${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</span></div>`,
-      pt.ele != null ? `<div class="wp-popup-row"><span>⛰️</span><span>${pt.ele.toFixed(1)} เมตร</span></div>` : "",
-      pt.time ? `<div class="wp-popup-row"><span>📅</span><span>${fmtDateTime(pt.time)}</span></div>` : "",
-    ].filter(Boolean).join("");
-
-    const popupHTML = `
-      <div class="wp-popup">
-        ${rows}
-        <div class="wp-popup-actions">
-          <a href="${gmapsUrl}" target="_blank" rel="noopener" class="wp-popup-btn wp-popup-btn-view">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            ดูบนแผนที่
-          </a>
-          <a href="${gmapsNavUrl}" target="_blank" rel="noopener" class="wp-popup-btn wp-popup-btn-nav">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-            นำทาง
-          </a>
-        </div>
-      </div>`;
-
-    m.bindPopup(popupHTML, {
-      maxWidth: 240,
-      className: "dark-popup",
-    });
-
-    m.addTo(State.map);
-    wpMarkers.push(m);
+    addedPins++;
   });
 
+  if (addedPins > 0) {
+    sortAndReindex();
+    refreshMap();
+    initTimeline();
+    renderSidebar();
+  }
 
-  // ── บันทึก State ────────────────────────────────────
+  // ── วาง waypoint markers เฉพาะจุดเริ่มและจุดจบ (ถ้าไม่มี Waypoints เลย) ──
+  const wpMarkers = [];
+  if (waypoints.length === 0 && trackPts.length >= 2) {
+    const wpSrc = [trackPts[0], trackPts[trackPts.length - 1]];
+    wpSrc.forEach((pt) => {
+      const icon = L.divIcon({
+        className: "track-waypoint-marker",
+        html: `<div class="track-wp-dot"></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+        popupAnchor: [0, -8],
+      });
+      const m = L.marker([pt.lat, pt.lng], { icon });
+      const gmapsUrl = `https://www.google.com/maps?q=${pt.lat},${pt.lng}`;
+      const popupHTML = `<div class="wp-popup"><div class="wp-popup-row"><span>📍</span><span>${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</span></div></div>`;
+      m.bindPopup(popupHTML, { maxWidth: 240, className: "dark-popup" });
+      m.addTo(State.map);
+      wpMarkers.push(m);
+    });
+  }
+
+  // ── บันทึก State (เฉพาะ Track Points) ─────────────────
   const totalDist = calcTrackDistance(allForLine);
   State.importedTrack = {
     name: filename,
-    points,
+    points: trackPts,
     polyline: trackPolyline,
     wpMarkers,
     totalDist,
@@ -2270,7 +2303,8 @@ function startEditName(photoId, card) {
     if (saved) return;
     saved = true;
     const newName = input.value.trim();
-    if (newName && newName !== photo.file.name) {
+    const defaultName = (photo.file ? photo.file.name : null) || photo.originalName;
+    if (newName && newName !== defaultName) {
       photo.displayName = newName;
     } else {
       photo.displayName = null; // กลับไปใช้ชื่อเดิม

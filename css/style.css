@@ -2128,7 +2128,6 @@ body {
 @supports (padding: env(safe-area-inset-bottom)) {
     .app-content {
         padding-bottom: env(safe-area-inset-bottom);
-        top: calc(var(--header-h) + env(safe-area-inset-top));
     }
     .header {
         padding-top: env(safe-area-inset-top);

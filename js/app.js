@@ -629,6 +629,7 @@ function buildPopupHTML(photo) {
     <div class="popup-content">
       <div class="popup-thumb-wrap">
         <img src="${photo.displayUrl}" class="popup-thumb" alt=""
+             onclick="showLightbox(this.src, '')"
              onerror="this.parentElement.style.display='none'">
         <div class="popup-badge">${photo.orderIndex}</div>
       </div>
@@ -640,8 +641,6 @@ function buildPopupHTML(photo) {
           <span>${lat}, ${lng}</span>
           <button class="popup-copy-btn" title="Copy พิกัด" onclick="navigator.clipboard.writeText('${coordStr}').then(()=>{this.textContent='✓';this.style.color='#4caf50';setTimeout(()=>{this.textContent='📋';this.style.color=''},1500)})">&#x1F4CB;</button>
         </div>
-        ${alt ? `<div class="popup-row"><span>⛰️</span><span>${alt}</span></div>` : ""}
-        ${cam ? `<div class="popup-row"><span>📷</span><span>${escHtml(cam)}</span></div>` : ""}
         <a href="${gmapsUrl}" target="_blank" rel="noopener" class="popup-gmaps-btn">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
           นำทางใน Google Maps
@@ -1153,7 +1152,13 @@ function buildPhotoCard(photo) {
     ` : ""}
   `;
 
-  // โ”€โ”€โ”€โ”€ Event listeners โ”€โ”€โ”€โ”€
+  // ──── Event listeners ────
+
+  // ขยายภาพ (Lightbox)
+  card.querySelector(".card-thumb")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showLightbox(photo.displayUrl, getPhotoName(photo));
+  });
 
   // Toggle expand/collapse
   card.querySelector("[data-toggle]")?.addEventListener("click", (e) => {
@@ -2559,5 +2564,39 @@ async function saveFullPageAsImage() {
   } finally {
     hideLoading();
   }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIGHTBOX (IMAGE VIEWER)
+   ───────────────────────────────────────────────────────────── */
+function showLightbox(src, altText) {
+  const overlay = document.createElement("div");
+  overlay.className = "lightbox-overlay";
+  
+  const img = document.createElement("img");
+  img.src = src;
+  img.className = "lightbox-img";
+  img.alt = altText || "Full size photo";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "lightbox-close";
+  closeBtn.innerHTML = "✕";
+  closeBtn.title = "ปิด";
+
+  // ปิดเมื่อกดปุ่ม X
+  closeBtn.addEventListener("click", () => {
+    document.body.removeChild(overlay);
+  });
+
+  // ปิดเมื่อกดพื้นหลัง
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+
+  overlay.appendChild(img);
+  overlay.appendChild(closeBtn);
+  document.body.appendChild(overlay);
 }
 

@@ -501,6 +501,18 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                border-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* T-009: ซ่อน sidebar เมื่อ collapsed */
+.sidebar.collapsed {
+    width: 0 !important;
+    min-width: 0;
+    opacity: 0;
+    border-left-width: 0;
+    pointer-events: none;
 }
 
 .sidebar-header {
@@ -558,6 +570,37 @@ body {
 .sidebar.collapsed + * .btn-sidebar-toggle .sidebar-toggle-icon,
 .btn-sidebar-toggle.rotated .sidebar-toggle-icon {
     transform: rotate(180deg);
+}
+
+/* T-009: Floating tab – ปุ่ม 📸 ติดขอบขวาเพื่อเปิด sidebar กลับ */
+.sidebar-float-tab {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 48px;
+    background: var(--red);
+    border: none;
+    border-radius: 8px 0 0 8px;
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: -2px 0 12px rgba(229, 9, 20, 0.3);
+    transition: all 0.25s ease;
+    opacity: 1;
+}
+.sidebar-float-tab:hover {
+    width: 42px;
+    background: #ff1a2a;
+    box-shadow: -3px 0 16px rgba(229, 9, 20, 0.5);
+}
+.sidebar-float-tab.hidden {
+    display: none;
 }
 
 
@@ -895,6 +938,95 @@ body {
     color: var(--red);
 }
 .gps-pin-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--border-hi);
+    color: var(--text);
+}
+
+/* ─── Inline Edit: DateTime ──────────────────────────────── */
+.card-date-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-bottom: 4px;
+}
+
+.card-edit-date-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    padding: 1px 3px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.photo-card:hover .card-edit-date-btn {
+    opacity: 0.45;
+}
+.card-edit-date-btn:hover {
+    opacity: 1 !important;
+}
+
+.card-date-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 0 2px;
+}
+
+.date-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-hi);
+    border-radius: 4px;
+    color: #fff;
+    color-scheme: dark;
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 5px 7px;
+    width: 100%;
+    min-width: 0;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.date-input:focus {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px var(--red-glow);
+}
+
+.date-edit-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.date-save-btn,
+.date-cancel-btn,
+.date-clear-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-sub);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    transition: all var(--transition);
+    white-space: nowrap;
+}
+.date-save-btn:hover {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #4caf50;
+    color: #4caf50;
+}
+.date-cancel-btn:hover {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+}
+.date-clear-btn:hover {
     background: rgba(255, 255, 255, 0.14);
     border-color: var(--border-hi);
     color: var(--text);

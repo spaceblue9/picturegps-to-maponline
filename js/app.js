@@ -1110,7 +1110,10 @@ function buildPhotoCard(photo) {
           </div>
           <button class="card-edit-name-btn" data-edit-name="${photo.id}" title="แก้ไขชื่อ">✏️</button>
         </div>
-        <div class="card-date">📅 ${date}</div>
+        <div class="card-date-row">
+          <div class="card-date">📅 ${date}</div>
+          <button class="card-edit-date-btn" data-edit-date="${photo.id}" title="แก้ไขวันเวลา">✏️</button>
+        </div>
         ${
           photo.hasGPS
             ? `<div class="card-gps-row">
@@ -1194,6 +1197,12 @@ function buildPhotoCard(photo) {
       e.stopPropagation();
       startEditGPS(photo.id, card);
     });
+  });
+
+  // Edit DateTime button
+  card.querySelector("[data-edit-date]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    startEditDateTime(photo.id, card);
   });
 
   card.addEventListener("click", () => {
@@ -2087,22 +2096,29 @@ function panToSearchResult(lat, lng, label) {
    ───────────────────────────────────────────────────────────── */
 function setupSidebarResizer() {
   const resizer = document.getElementById("sidebar-resizer");
-  const appContent = document.querySelector(".app-content");
-  if (!resizer || !appContent) return;
+  const sidebar = document.querySelector(".sidebar");
+  if (!resizer || !sidebar) return;
 
   let isResizing = false;
   let startX = 0;
   let startSidebarW = 0;
 
   function getSidebarWidth() {
-    const sidebar = document.querySelector(".sidebar");
-    return sidebar ? sidebar.getBoundingClientRect().width : 320;
+    return sidebar.getBoundingClientRect().width;
+  }
+
+  function applySidebarWidth(newW) {
+    const clamped = Math.min(Math.max(newW, 220), 600);
+    sidebar.style.width = clamped + "px";
+    State.map?.invalidateSize();
   }
 
   resizer.addEventListener("mousedown", (e) => {
     isResizing = true;
     startX = e.clientX;
     startSidebarW = getSidebarWidth();
+    // ปิด transition ชั่วคราวเพื่อให้ลากลื่นไม่กระตุก
+    sidebar.style.transition = "none";
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   });
@@ -2110,14 +2126,13 @@ function setupSidebarResizer() {
   document.addEventListener("mousemove", (e) => {
     if (!isResizing) return;
     const delta = startX - e.clientX; // ลาก left = เพิ่มความกว้าง sidebar
-    const newW = Math.min(Math.max(startSidebarW + delta, 220), 600);
-    appContent.style.gridTemplateColumns = `1fr 5px ${newW}px`;
-    State.map?.invalidateSize();
+    applySidebarWidth(startSidebarW + delta);
   });
 
   document.addEventListener("mouseup", () => {
     if (isResizing) {
       isResizing = false;
+      sidebar.style.transition = "";  // คืน transition เดิม
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
@@ -2128,17 +2143,21 @@ function setupSidebarResizer() {
     isResizing = true;
     startX = e.touches[0].clientX;
     startSidebarW = getSidebarWidth();
+    sidebar.style.transition = "none";
   }, { passive: true });
 
   document.addEventListener("touchmove", (e) => {
     if (!isResizing) return;
     const delta = startX - e.touches[0].clientX;
-    const newW = Math.min(Math.max(startSidebarW + delta, 220), 600);
-    appContent.style.gridTemplateColumns = `1fr 5px ${newW}px`;
-    State.map?.invalidateSize();
+    applySidebarWidth(startSidebarW + delta);
   }, { passive: true });
 
-  document.addEventListener("touchend", () => { isResizing = false; });
+  document.addEventListener("touchend", () => {
+    if (isResizing) {
+      isResizing = false;
+      sidebar.style.transition = "";
+    }
+  });
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -2148,20 +2167,25 @@ function setupSidebarToggle() {
   const sidebar   = document.querySelector(".sidebar");
   const resizer   = document.getElementById("sidebar-resizer");
   const toggleBtn = document.getElementById("btn-sidebar-toggle");
+  const floatTab  = document.getElementById("btn-sidebar-float");
 
   if (!sidebar || !toggleBtn) return;
 
   let isCollapsed = false;
+  let savedWidth  = null; // จำความกว้างก่อน collapse เพื่อคืนค่าตอน expand
 
   /** ย่อ sidebar */
   function collapseSidebar() {
     isCollapsed = true;
+    // จำความกว้างปัจจุบัน (อาจถูก resize แล้ว)
+    savedWidth = sidebar.style.width || null;
     sidebar.classList.add("collapsed");
     toggleBtn.classList.add("rotated");
     toggleBtn.setAttribute("aria-expanded", "false");
     toggleBtn.setAttribute("aria-label", "เปิดรายการ");
     toggleBtn.title = "เปิดรายการรูปภาพ";
     if (resizer) resizer.style.display = "none";
+    if (floatTab) floatTab.classList.remove("hidden");
 
     // แจ้ง Leaflet หลัง transition เสร็จ
     sidebar.addEventListener("transitionend", () => {
@@ -2173,11 +2197,14 @@ function setupSidebarToggle() {
   function expandSidebar() {
     isCollapsed = false;
     sidebar.classList.remove("collapsed");
+    // คืนความกว้างเดิม (ถ้าเคย resize)
+    if (savedWidth) sidebar.style.width = savedWidth;
     toggleBtn.classList.remove("rotated");
     toggleBtn.setAttribute("aria-expanded", "true");
     toggleBtn.setAttribute("aria-label", "ย่อรายการ");
     toggleBtn.title = "ย่อรายการรูปภาพ";
     if (resizer) resizer.style.display = "";
+    if (floatTab) floatTab.classList.add("hidden");
 
     // แจ้ง Leaflet หลัง transition เสร็จ
     sidebar.addEventListener("transitionend", () => {
@@ -2190,6 +2217,13 @@ function setupSidebarToggle() {
     if (isCollapsed) expandSidebar();
     else collapseSidebar();
   });
+
+  // ปุ่ม floating tab
+  if (floatTab) {
+    floatTab.addEventListener("click", () => {
+      expandSidebar();
+    });
+  }
 
   // Keyboard shortcut: ] ย่อ/ขยาย sidebar
   document.addEventListener("keydown", (e) => {
@@ -2319,6 +2353,88 @@ function startEditGPS(photoId, card) {
 
   // Focus first input
   inputs[0].focus();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   T-011: INLINE EDIT DATETIME
+   ───────────────────────────────────────────────────────────── */
+function startEditDateTime(photoId, card) {
+  const photo = State.photos.find((p) => p.id === photoId);
+  if (!photo) return;
+
+  const targetEl = card.querySelector(".card-date-row");
+  if (!targetEl) return;
+
+  // แปลง Date เป็น datetime-local value format: "YYYY-MM-DDThh:mm"
+  let dtValue = "";
+  if (photo.dateTime instanceof Date && !isNaN(photo.dateTime.getTime())) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const d = photo.dateTime;
+    dtValue =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  // สร้าง inline form
+  const wrapper = document.createElement("div");
+  wrapper.className = "card-date-edit";
+  wrapper.innerHTML = `
+    <input type="datetime-local" class="date-input" value="${dtValue}">
+    <div class="date-edit-actions">
+      <button class="date-save-btn" title="บันทึก">✓ บันทึก</button>
+      <button class="date-cancel-btn" title="ยกเลิก">✕</button>
+      <button class="date-clear-btn" title="ล้างค่าวันเวลา">🗑️ ล้างค่า</button>
+    </div>
+  `;
+
+  targetEl.replaceWith(wrapper);
+
+  // หยุด click event ไม่ให้ bubble ขึ้นไปที่ card
+  wrapper.addEventListener("click", (e) => e.stopPropagation());
+
+  const dateInput = wrapper.querySelector(".date-input");
+
+  // ── Save ──
+  wrapper.querySelector(".date-save-btn").addEventListener("click", () => {
+    const val = dateInput.value;
+    if (val) {
+      const newDate = new Date(val);
+      if (!isNaN(newDate.getTime())) {
+        photo.dateTime = newDate;
+        sortAndReindex();
+        refreshMap();
+        initTimeline();
+        renderSidebar();
+        renderRouteStats();
+        renderHeaderStats();
+        showToast(`✅ อัปเดตวันเวลาเป็น "${fmtDateTime(newDate)}"`, "", null, 3000);
+      } else {
+        showToast("⚠️ รูปแบบวันเวลาไม่ถูกต้อง", "", null, 3000);
+      }
+    } else {
+      showToast("⚠️ กรุณาเลือกวันเวลา", "", null, 3000);
+    }
+  });
+
+  // ── Cancel ──
+  wrapper.querySelector(".date-cancel-btn").addEventListener("click", () => {
+    renderSidebar();
+  });
+
+  // ── Clear (ล้างค่า → ไม่มีวันเวลา) ──
+  wrapper.querySelector(".date-clear-btn").addEventListener("click", () => {
+    photo.dateTime = null;
+    sortAndReindex();
+    refreshMap();
+    initTimeline();
+    renderSidebar();
+    renderRouteStats();
+    renderHeaderStats();
+    showToast("🗑️ ล้างค่าวันเวลาแล้ว", "", null, 3000);
+  });
+
+  // Focus
+  dateInput.focus();
 }
 
 /* ─────────────────────────────────────────────────────────────

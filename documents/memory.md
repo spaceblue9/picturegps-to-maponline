@@ -23,6 +23,10 @@ picturegps-to-maponline/
 │   └── style.css       ← Netflix dark theme
 ├── js/
 │   └── app.js          ← app logic (EXIF, map, UI)
+├── .gitignore          ← excludes OS files, editor configs, Python bytecode
+├── netlify.toml        ← Netlify hosting config (headers, caching)
+├── manifest.json       ← PWA manifest
+├── favicon.svg         ← SVG favicon
 └── documents/          ← project docs
 ```
 
@@ -36,6 +40,8 @@ picturegps-to-maponline/
 - **Distance**: คำนวณ Haversine formula ระหว่าง GPS points แสดงใน sidebar header
 - **Save map**: ใช้ html2canvas + `useCORS: true` / ถ้า fail แนะนำ Snipping Tool
 - **Design**: Netflix dark theme — bg #141414, accent #E50914, font Sarabun
+- **Deployment**: `netlify.toml` — security headers (X-Frame-Options DENY, nosniff, Referrer-Policy), aggressive cache สำหรับ static assets (1 yr immutable), HTML must-revalidate
+- **Edit DateTime (T-011)**: ผู้ใช้แก้ไขวันเวลาของรูปได้ผ่าน inline `datetime-local` input ใน photo card → อัปเดต sorting/routing/timeline/stats อัตโนมัติ, มีปุ่ม "ล้างค่า" เพื่อ reset เป็น null
 
 ## Constraints
 - ไม่มี Database

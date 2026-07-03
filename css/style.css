@@ -150,6 +150,8 @@ body {
     background: rgba(20, 20, 20, 0.95);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .header-inner {
@@ -1270,30 +1272,26 @@ body {
    toolbar แถวเดียว icon-only
 ══════════════════════════════════════════════════════════ */
 @media (max-width: 700px) {
-    /* ── App shell: ใช้ column บน mobile เพื่อให้แผนที่อยู่บน แถบอยู่ล่าง ── */
+    /* ── App shell: คงเป็น row เหมือน desktop ── */
     .app-content {
-        flex-direction: column;
+        flex-direction: row;
     }
 
-    /* ── Map: กำหนดความสูงตายตัว ── */
+    /* ── Map: flex:1 ขยายเต็มส่วนที่เหลือ ── */
     .map-section {
-        height: 46vh;
-        flex-shrink: 0;
+        flex: 1;
+        height: auto;
         min-height: 0;
         min-width: 0;
     }
 
-    /* ── Sidebar: ขยายเต็มความกว้างและใช้พื้นที่แนวตั้งที่เหลือ ── */
+    /* ── Sidebar: แคบลงบน mobile ── */
     .sidebar {
-        width: 100%;
-        flex: 1;
+        width: 200px;
+        flex-shrink: 0;
         min-height: 0;
-        border-left: none;
-        border-top: 1px solid var(--border);
-    }
-
-    .header-stats {
-        display: none;
+        border-left: 1px solid var(--border);
+        border-top: none;
     }
 
     /* ── sidebar-resizer: ซ่อนบน mobile ── */

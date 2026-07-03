@@ -48,6 +48,7 @@
 html,
 body {
     height: 100%;
+    height: 100dvh;
     overflow: hidden;
     overflow-x: hidden; /* ป้องกัน horizontal scroll บน mobile */
     font-family: var(--font);
@@ -327,6 +328,15 @@ body {
     flex: 1;
     width: 100%;
     min-height: 0;
+}
+
+/* landscape: ให้ upload zone scroll ได้สำหรับจอมือถือแนวนอน */
+@media (max-height: 520px) {
+    .upload-zone {
+        align-items: flex-start;
+        padding-top: 16px;
+        padding-bottom: 16px;
+    }
 }
 
 /* ─── Leaflet Overrides ──────────────────────────────────── */
@@ -1348,14 +1358,6 @@ body {
         width: 52px;
         height: 52px;
     }
-    /* landscape: ให้ upload zone scroll ได้ */
-    @media (orientation: landscape) {
-        .upload-zone {
-            align-items: flex-start;
-            padding-top: 16px;
-            padding-bottom: 16px;
-        }
-    }
 
     /* ── Metadata grid ── */
     .card-meta {
@@ -2124,6 +2126,7 @@ body {
 @supports (padding: env(safe-area-inset-bottom)) {
     .app-content {
         padding-bottom: env(safe-area-inset-bottom);
+        top: calc(var(--header-h) + env(safe-area-inset-top));
     }
     .header {
         padding-top: env(safe-area-inset-top);
